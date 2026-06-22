@@ -24,6 +24,11 @@ from .snapshot import (
     list_backups, restore_from_backup, get_backup_path,
     validate_snapshot_file, read_ops_log,
     ImportReport, ImportConflict,
+    PREFLIGHT_PROCEED, PREFLIGHT_CONFIRM, PREFLIGHT_ABORT,
+    CATEGORY_CONFIG_MISSING, CATEGORY_RESIDUAL_STATE,
+    CATEGORY_VERSION_MISMATCH, CATEGORY_TARGET_HAS_DATA,
+    CATEGORY_SNAPSHOT_INVALID, CATEGORY_TARGET_INVALID,
+    CATEGORY_CONTENT_CONFLICT,
 )
 
 
@@ -421,11 +426,47 @@ def import_snapshot_cmd(ctx, snapshot_path, strategy, include_config, dry_run, y
 
     if dry_run:
         report = preflight_import(workspace, snapshot_path)
-    else:
-        report = import_snapshot(workspace, snapshot_path,
-                                strategy=strategy,
-                                include_config=include_config,
-                                dry_run=False)
+        _print_import_report(report)
+        if report.has_errors:
+            sys.exit(1)
+        return
+
+    preflight_report = preflight_import(workspace, snapshot_path)
+    _print_preflight_summary(preflight_report)
+
+    conclusion = preflight_report.preflight_conclusion
+
+    if conclusion == PREFLIGHT_ABORT:
+        click.echo("")
+        click.echo("=" * 60)
+        click.echo("[中止] 预检结论为【必须中止】，导入未执行")
+        click.echo("请根据上述冲突提示处理后重试，或使用 --dry-run 重新检查")
+        click.echo("=" * 60)
+        _print_import_report(preflight_report)
+        sys.exit(1)
+
+    if conclusion == PREFLIGHT_CONFIRM and not yes:
+        click.echo("")
+        click.echo("=" * 60)
+        click.echo("[需确认] 预检结论为【需确认】，存在以下风险:")
+        warning_conflicts = [c for c in preflight_report.conflicts if c.severity == "warning"]
+        for c in warning_conflicts:
+            click.echo(f"  ! [{c.conflict_type}] {c.message}")
+        click.echo("")
+        click.echo("策略说明:")
+        click.echo(f"  冲突处理: {strategy}")
+        click.echo(f"  导入配置: {'是' if include_config else '否（保留目标配置）'}")
+        click.echo("")
+        if not click.confirm("确认继续执行导入? 此操作将修改工作区状态，已自动生成备份"):
+            click.echo("已取消导入，工作区未做任何修改")
+            sys.exit(0)
+
+    click.echo("")
+    click.echo("开始执行导入...")
+    report = import_snapshot(workspace, snapshot_path,
+                            strategy=strategy,
+                            include_config=include_config,
+                            dry_run=False)
 
     _print_import_report(report)
 
@@ -511,14 +552,91 @@ def backup_restore_cmd(ctx, backup_name, yes):
         sys.exit(1)
 
 
+CATEGORY_LABELS = {
+    CATEGORY_CONFIG_MISSING: "配置缺失类",
+    CATEGORY_RESIDUAL_STATE: "残留状态类",
+    CATEGORY_VERSION_MISMATCH: "版本不匹配类",
+    CATEGORY_TARGET_HAS_DATA: "目标已有数据类",
+    CATEGORY_SNAPSHOT_INVALID: "快照无效类",
+    CATEGORY_TARGET_INVALID: "目标目录无效类",
+    CATEGORY_CONTENT_CONFLICT: "内容冲突类",
+    "uncategorized": "未分类",
+}
+
+PREFLIGHT_CONCLUSION_LABELS = {
+    PREFLIGHT_PROCEED: ("可继续", "[OK]", "绿色"),
+    PREFLIGHT_CONFIRM: ("需确认", "[!]", "黄色"),
+    PREFLIGHT_ABORT: ("必须中止", "[X]", "红色"),
+}
+
+
+def _print_preflight_summary(report: ImportReport) -> None:
+    click.echo("=" * 60)
+    click.echo("【预检阶段】结构化检查结果")
+    click.echo("=" * 60)
+
+    conclusion = report.preflight_conclusion
+    label, icon, _ = PREFLIGHT_CONCLUSION_LABELS.get(
+        conclusion, ("未知", "?", "无色")
+    )
+    click.echo(f"预检结论: {icon} 【{label}】 ({conclusion})")
+    click.echo(f"导入ID: {report.import_id}")
+    click.echo(f"检查阶段: {report.phase}")
+
+    if report.conflict_summary:
+        click.echo("")
+        click.echo("冲突分类汇总:")
+        for cat, count in sorted(report.conflict_summary.items()):
+            label = CATEGORY_LABELS.get(cat, cat)
+            click.echo(f"  - {label}: {count} 项")
+
+    errors = [c for c in report.conflicts if c.severity == "error"]
+    warnings = [c for c in report.conflicts if c.severity == "warning"]
+    infos = [c for c in report.conflicts if c.severity == "info"]
+
+    click.echo("")
+    click.echo(f"严重程度: 错误={len(errors)}, 警告={len(warnings)}, 提示={len(infos)}")
+
+    if report.snapshot_info:
+        info = report.snapshot_info
+        click.echo("")
+        click.echo("快照信息:")
+        click.echo(f"  版本: {info.snapshot_version}")
+        click.echo(f"  导出时间: {info.exported_at}")
+        click.echo(f"  来源: {info.source_workspace}")
+        if info.note:
+            click.echo(f"  备注: {info.note}")
+        click.echo(f"  问题数: {info.issue_count}, 历史: {info.history_count} 条")
+
+    if errors:
+        click.echo("")
+        click.echo("【必须中止的原因】:")
+        for c in errors:
+            cat_label = CATEGORY_LABELS.get(c.category, c.category or "未分类")
+            click.echo(f"  [X] [{cat_label}] {c.conflict_type}: {c.message}")
+            if c.hint:
+                click.echo(f"     建议: {c.hint}")
+
+    click.echo("")
+    click.echo("-" * 60)
+
+
 def _print_import_report(report: ImportReport) -> None:
     mode = "预检" if report.dry_run else "导入"
     status = "成功" if report.success or report.dry_run else "失败"
 
+    click.echo("")
     click.echo("=" * 60)
     click.echo(f"快照{mode}报告: {status}")
+    if report.import_id:
+        click.echo(f"导入ID: {report.import_id}")
     if report.phase:
         click.echo(f"阶段: {report.phase}")
+    if report.preflight_conclusion:
+        label, icon, _ = PREFLIGHT_CONCLUSION_LABELS.get(
+            report.preflight_conclusion, ("未知", "?", "无色")
+        )
+        click.echo(f"预检结论: {icon} 【{label}】")
     click.echo("=" * 60)
 
     if report.snapshot_info:
@@ -532,11 +650,21 @@ def _print_import_report(report: ImportReport) -> None:
             click.echo(f"校验和: {info.content_hash}")
         click.echo("")
 
+    if report.conflict_summary:
+        click.echo("冲突分类汇总:")
+        for cat, count in sorted(report.conflict_summary.items()):
+            label = CATEGORY_LABELS.get(cat, cat)
+            click.echo(f"  - {label}: {count} 项")
+        click.echo("")
+
     if report.conflicts:
         click.echo(f"冲突/警告: {len(report.conflicts)} 项")
         for c in report.conflicts:
             icon = "X" if c.severity == "error" else ("!" if c.severity == "warning" else "i")
-            click.echo(f"  [{icon}] [{c.conflict_type}] {c.message}")
+            cat_label = ""
+            if c.category:
+                cat_label = f"[{CATEGORY_LABELS.get(c.category, c.category)}] "
+            click.echo(f"  [{icon}] {cat_label}[{c.conflict_type}] {c.message}")
             if c.hint:
                 click.echo(f"       建议: {c.hint}")
             if c.conflict_type == "config_mismatch" and "diffs" in c.details:
@@ -571,23 +699,18 @@ def _print_import_report(report: ImportReport) -> None:
     if report.has_errors and not report.dry_run:
         click.echo("")
         error_conflicts = [c for c in report.conflicts if c.severity == "error"]
-        if any(c.conflict_type in ("snapshot_missing", "snapshot_invalid_json",
-                                    "snapshot_read_error", "snapshot_missing_keys",
-                                    "snapshot_info_missing", "snapshot_state_missing",
-                                    "snapshot_config_missing", "snapshot_parse_error",
-                                    "snapshot_checksum_mismatch")
-               for c in error_conflicts):
+        if any(c.category == CATEGORY_SNAPSHOT_INVALID for c in error_conflicts):
             click.echo("[诊断] 问题原因: 快照包有问题（文件损坏、格式异常或校验失败）")
             click.echo("  建议操作: 请重新导出快照，确认传输过程中文件未被修改")
-        elif any(c.conflict_type in ("target_dir_not_creatable", "target_dir_not_writable")
-                 for c in error_conflicts):
+        elif any(c.category == CATEGORY_TARGET_INVALID for c in error_conflicts):
             click.echo("[诊断] 问题原因: 目标目录有问题（无法写入或创建）")
             click.echo("  建议操作: 请检查目录权限和路径是否正确")
-        elif any(c.conflict_type in ("snapshot_version_unsupported", "state_version_unsupported",
-                                      "config_version_unsupported")
-                 for c in error_conflicts):
+        elif any(c.category == CATEGORY_VERSION_MISMATCH for c in error_conflicts):
             click.echo("[诊断] 问题原因: 版本不匹配（快照由不同版本工具导出）")
             click.echo("  建议操作: 请升级 survey-check 或使用匹配版本的工具重新导出")
+        elif any(c.category == CATEGORY_RESIDUAL_STATE for c in error_conflicts):
+            click.echo("[诊断] 问题原因: 目标工作区存在残留状态（有状态无配置）")
+            click.echo("  建议操作: 删除 .survey_check/ 目录后重新导入，或先 init 初始化")
         elif any(c.conflict_type == "import_failed" for c in error_conflicts):
             click.echo("[诊断] 问题原因: 导入执行过程中出错，已从备份恢复")
             click.echo("  建议操作: 请检查错误信息，确认工作区状态后重试")

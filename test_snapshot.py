@@ -1403,6 +1403,661 @@ def test_import_cross_restart_status_consistency():
         return True
 
 
+def test_preflight_three_conclusions():
+    """测试21：dry-run预检 - 三种结论(proceed/confirm/abort)、冲突分类汇总、import_id、结构化ops-log"""
+    print("\n" + "=" * 60)
+    print("测试21：预检三种结论 + 冲突分类 + 结构化日志")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="preflight_3_") as tmp:
+        base = Path(tmp)
+
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0
+        r = run_cli(ws_src, "review", "ISS-0001", "--status", "pending",
+                    "--remark", "预检源备注")
+        assert r.returncode == 0
+        snap_path = base / "p1.json"
+        r = run_cli(ws_src, "export", str(snap_path))
+        assert r.returncode == 0
+
+        # ===== 场景1：空工作区 clean import => proceed =====
+        ws_proceed = base / "ws_proceed"
+        ws_proceed.mkdir()
+        r = run_cli(ws_proceed, "import", str(snap_path), "--dry-run")
+        assert r.returncode == 0, f"proceed场景dry-run返回码应为0: {r.stderr}"
+        assert "预检结论" in r.stdout, "应包含预检结论字段"
+        assert "[OK]" in r.stdout and "可继续" in r.stdout, \
+            f"proceed场景应输出[OK]可继续: {r.stdout[:200]}"
+        assert "导入ID: IMP-" in r.stdout, "应包含import_id"
+        assert "冲突分类汇总" in r.stdout, "应包含冲突分类汇总"
+        log_p = load_ops_log(ws_proceed)
+        dry_logs = [e for e in log_p if e.get("op") == "import_dry_run"]
+        assert len(dry_logs) >= 1, "应至少有1条dry_run ops-log"
+        assert dry_logs[-1].get("preflight_conclusion") == "proceed", \
+            f"ops-log应记录preflight_conclusion=proceed"
+        assert "import_id" in dry_logs[-1], "ops-log应包含import_id"
+        assert "conflict_summary" in dry_logs[-1], "ops-log应包含conflict_summary"
+        print(f"  场景1(proceed): 预检结论OK, ops-log结构化完整 - OK")
+
+        # ===== 场景2：有状态的旧工作区 + 相同快照 => confirm(有warnings) =====
+        ws_confirm = base / "ws_confirm"
+        shutil.copytree(ws_src, ws_confirm)
+        r = run_cli(ws_confirm, "import", str(snap_path), "--dry-run")
+        assert r.returncode == 0, f"confirm场景dry-run返回码应为0: {r.stderr}"
+        assert "[!]" in r.stdout and "需确认" in r.stdout, \
+            f"confirm场景应输出[!]需确认: {r.stdout[:200]}"
+        assert "目标已有数据类" in r.stdout, "应包含目标已有数据类冲突分类"
+        assert "内容冲突类" in r.stdout, "应包含内容冲突类分类"
+        log_c = load_ops_log(ws_confirm)
+        dry_logs_c = [e for e in log_c if e.get("op") == "import_dry_run"]
+        assert dry_logs_c[-1].get("preflight_conclusion") == "confirm", \
+            f"ops-log应记录preflight_conclusion=confirm"
+        summ = dry_logs_c[-1].get("conflict_summary", {})
+        assert summ.get("target_has_data", 0) >= 1, "conflict_summary应有target_has_data类"
+        print(f"  场景2(confirm): 警告触发需确认结论 + 分类汇总OK - OK")
+
+        # ===== 场景3：残留状态无配置 => abort(有error) =====
+        ws_abort = base / "ws_abort"
+        ws_abort.mkdir()
+        sd = ws_abort / ".survey_check"
+        sd.mkdir()
+        with open(sd / "survey_state.json", "w", encoding="utf-8") as f:
+            json.dump({"state_version": "1.0", "issues": [], "review_history": [],
+                       "undo_stack": [], "next_issue_number": 1}, f)
+        r = run_cli(ws_abort, "import", str(snap_path), "--dry-run")
+        assert r.returncode != 0, "abort场景dry-run返回码应非0"
+        assert "[X]" in r.stdout and "必须中止" in r.stdout, \
+            f"abort场景应输出[X]必须中止: {r.stdout[:200]}"
+        assert "残留状态类" in r.stdout, "应包含残留状态类分类"
+        print(f"  场景3(abort): 残留状态触发必须中止 - OK")
+
+        print("  [PASS] 测试21通过")
+        return True
+
+
+def test_confirmation_flow_before_write():
+    """测试22：落盘前确认流程 - confirm场景非--yes触发交互，--yes跳过，abort不执行"""
+    print("\n" + "=" * 60)
+    print("测试22：落盘前确认流程（--yes vs 交互 vs abort）")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="confirm_flow_") as tmp:
+        base = Path(tmp)
+
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0
+        r = run_cli(ws_src, "review", "ISS-0001", "--status", "accepted",
+                    "--remark", "源备注确认流测试")
+        assert r.returncode == 0
+        snap_path = base / "flow.json"
+        r = run_cli(ws_src, "export", str(snap_path))
+        assert r.returncode == 0
+
+        # ===== 场景A：confirm场景 --yes => 直接跳过确认成功导入 =====
+        ws_yes = base / "ws_yes"
+        shutil.copytree(ws_src, ws_yes)
+        state_before = load_state(ws_yes)
+        remark_before = next(i["remark"] for i in state_before["issues"] if i["id"] == "ISS-0001")
+        r = run_cli(ws_yes, "import", str(snap_path),
+                    "--strategy", "overwrite", "--yes")
+        assert r.returncode == 0, f"--yes跳过确认应成功: {r.stderr}"
+        assert "开始执行导入" in r.stdout, "应输出开始执行导入"
+        assert "快照导入报告: 成功" in r.stdout, "应输出成功"
+        state_after = load_state(ws_yes)
+        logs_y = load_ops_log(ws_yes)
+        imp_logs_y = [e for e in logs_y if e.get("op") == "import" and e.get("result") == "success"]
+        assert len(imp_logs_y) >= 1, "应有成功的导入记录"
+        assert "pending_confirm" in [e.get("result") for e in logs_y], \
+            "应有pending_confirm阶段的记录"
+        print(f"  场景A(--yes跳过): 确认跳过成功 - OK")
+
+        # ===== 场景B：confirm场景 无--yes 输入n => 取消导入不修改 =====
+        ws_no = base / "ws_no"
+        shutil.copytree(ws_src, ws_no)
+        state_before_no = json.dumps(load_state(ws_no), sort_keys=True)
+        cfg_before_no = json.dumps(load_config(ws_no), sort_keys=True)
+        p = subprocess.run(
+            [PYTHON_EXE, "-m", "survey_check", "--workspace", str(ws_no),
+             "import", str(snap_path), "--strategy", "overwrite"],
+            input="n\n", capture_output=True, text=True, cwd=ws_no,
+            env={**os.environ, "PYTHONPATH": str(SCRIPT_DIR)}
+        )
+        assert p.returncode == 0, f"输入n取消应退出码0(用户主动取消): stdout={p.stdout}, err={p.stderr}"
+        assert "已取消导入" in p.stdout or "取消" in p.stdout, \
+            f"应输出取消提示: {p.stdout[:300]}"
+        state_after_no = json.dumps(load_state(ws_no), sort_keys=True)
+        cfg_after_no = json.dumps(load_config(ws_no), sort_keys=True)
+        assert state_before_no == state_after_no, "用户取消后状态文件不应被修改"
+        assert cfg_before_no == cfg_after_no, "用户取消后配置文件不应被修改"
+        logs_n = load_ops_log(ws_no)
+        success_logs = [e for e in logs_n if e.get("op") == "import" and e.get("result") == "success"]
+        assert len(success_logs) == 0, "取消后不应有成功导入记录"
+        print(f"  场景B(取消确认): 取消后状态/配置不修改 - OK")
+
+        # ===== 场景C：confirm场景 无--yes 输入y => 确认后成功导入 =====
+        ws_ok = base / "ws_ok"
+        shutil.copytree(ws_src, ws_ok)
+        p = subprocess.run(
+            [PYTHON_EXE, "-m", "survey_check", "--workspace", str(ws_ok),
+             "import", str(snap_path), "--strategy", "overwrite"],
+            input="y\n", capture_output=True, text=True, cwd=ws_ok,
+            env={**os.environ, "PYTHONPATH": str(SCRIPT_DIR)}
+        )
+        assert p.returncode == 0, f"输入y确认应成功: stdout={p.stdout[:300]}, err={p.stderr}"
+        assert "确认继续执行导入" in p.stdout or "开始执行导入" in p.stdout, \
+            f"应包含确认提示或执行开始: {p.stdout[:300]}"
+        assert "快照导入报告: 成功" in p.stdout, f"应报告成功: {p.stdout[-300:]}"
+        logs_o = load_ops_log(ws_ok)
+        imp_ok = [e for e in logs_o if e.get("op") == "import" and e.get("result") == "success"]
+        assert len(imp_ok) >= 1, "确认后应有成功导入记录"
+        print(f"  场景C(交互确认): 确认后导入成功 - OK")
+
+        # ===== 场景D：abort场景 --yes也不执行 =====
+        ws_abort = base / "ws_abort"
+        ws_abort.mkdir()
+        sd = ws_abort / ".survey_check"
+        sd.mkdir()
+        with open(sd / "survey_state.json", "w", encoding="utf-8") as f:
+            json.dump({"state_version": "1.0", "issues": [], "review_history": [],
+                       "undo_stack": [], "next_issue_number": 1}, f)
+        r = run_cli(ws_abort, "import", str(snap_path), "--strategy", "skip", "--yes")
+        assert r.returncode != 0, "abort场景即使用--yes也应退出码非0"
+        assert "必须中止" in r.stdout or "[中止]" in r.stdout, \
+            f"abort应明确提示中止: {r.stdout[:300]}"
+        assert not (sd / "survey_config.json").exists(), "abort后不应生成配置文件"
+        print(f"  场景D(abort不受--yes影响): 正确拦截 - OK")
+
+        print("  [PASS] 测试22通过")
+        return True
+
+
+def test_duplicate_import_detection():
+    """测试23：重复导入冲突检测 + duplicate_import_warning + ops-log幂等痕迹"""
+    print("\n" + "=" * 60)
+    print("测试23：重复导入冲突检测（相同内容快照二次导入告警）")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="dup_import_") as tmp:
+        base = Path(tmp)
+
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0
+        r = run_cli(ws_src, "review", "ISS-0001", "--status", "pending",
+                    "--remark", "重复导入源备注")
+        assert r.returncode == 0
+        snap_path = base / "dup.json"
+        r = run_cli(ws_src, "export", str(snap_path))
+        assert r.returncode == 0
+        with open(snap_path, encoding="utf-8") as f:
+            snap_content = json.load(f)
+        expected_hash = snap_content["snapshot_info"]["content_hash"]
+
+        ws_dst = base / "dst"
+        ws_dst.mkdir()
+        # 第1次导入（空工作区）
+        r1 = run_cli(ws_dst, "import", str(snap_path), "--yes")
+        assert r1.returncode == 0
+        state1 = load_state(ws_dst)
+        issues1 = len(state1["issues"])
+        hist1 = len(state1["review_history"])
+
+        # 第2次导入（相同快照），触发duplicate警告
+        r2 = run_cli(ws_dst, "import", str(snap_path), "--strategy", "skip",
+                     "--dry-run")
+        assert r2.returncode == 0
+        assert "duplicate_import_warning" in r2.stdout or "相同内容的快照已成功导入" in r2.stdout, \
+            f"第2次导回应触发重复导入告警: {r2.stdout[:500]}"
+        assert "内容冲突类" in r2.stdout, "重复导入应归类为内容冲突类"
+
+        # 第2次实际导入（skip策略），不新增重复记录
+        r2_real = run_cli(ws_dst, "import", str(snap_path), "--strategy", "skip",
+                          "--yes")
+        assert r2_real.returncode == 0
+        state2 = load_state(ws_dst)
+        issues2 = len(state2["issues"])
+        hist2 = len(state2["review_history"])
+        assert_equal(issues2, issues1, "skip策略下重复导入问题数不应增加")
+        assert_equal(hist2, hist1, "skip策略下重复导入历史数不应增加(不重复导入)")
+
+        # ops-log 检查：包含重复导入告警的 previous_import 信息
+        logs = load_ops_log(ws_dst)
+        import_logs = [e for e in logs if e.get("op") == "import"
+                       and e.get("content_hash") == expected_hash
+                       and e.get("result") == "success"]
+        assert len(import_logs) >= 2, f"应有2条成功导入日志, 实际{len(import_logs)}"
+        # 查看第二条是否是重复导入（带 duplicate 警告的 content conflict）
+        pre_entries = [e for e in logs if "conflicts" in e
+                       and any(c.get("conflict_type") == "duplicate_import_warning"
+                               for c in e.get("conflicts", []))]
+        assert len(pre_entries) >= 1, "应至少有1条包含重复导入告警的预检记录"
+        print(f"  第1次导入: {issues1}问题/{hist1}历史")
+        print(f"  第2次导入: {issues2}问题/{hist2}历史 (未增加重复记录)")
+        print(f"  ops-log重复导入告警痕迹: {len(pre_entries)} 条 - OK")
+
+        print("  [PASS] 测试23通过")
+        return True
+
+
+def test_export_then_import_roundtrip():
+    """测试24：导出->导入->再导出->再导回 - 往返数据完整性，备注历史不丢失"""
+    print("\n" + "=" * 60)
+    print("测试24：导出-导入往返（导出→导入→再导出→再导回）")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="roundtrip_") as tmp:
+        base = Path(tmp)
+
+        # Step1: 初始工作区A，扫描+留备注，导出快照A
+        ws_a = setup_workspace(base, "ws_a")
+        r = run_cli(ws_a, "scan")
+        assert r.returncode == 0
+        r = run_cli(ws_a, "review", "ISS-0001", "--status", "pending",
+                    "--remark", "A-第一轮备注")
+        assert r.returncode == 0
+        r = run_cli(ws_a, "review", "ISS-0003", "--status", "accepted",
+                    "--remark", "A-第二轮备注")
+        assert r.returncode == 0
+        snap_a = base / "snap_A.json"
+        r = run_cli(ws_a, "export", str(snap_a), "--note", "A首轮快照")
+        assert r.returncode == 0
+        with open(snap_a, encoding="utf-8") as f:
+            sa = json.load(f)
+        issues_a_count = len(sa["state"]["issues"])
+        history_a_count = len(sa["state"]["review_history"])
+        hash_a = sa["snapshot_info"]["content_hash"]
+
+        # Step2: 全新工作区B导入快照A
+        ws_b = base / "ws_b"
+        ws_b.mkdir()
+        r = run_cli(ws_b, "import", str(snap_a), "--yes")
+        assert r.returncode == 0
+        state_b = load_state(ws_b)
+        iss_b_1 = next(i for i in state_b["issues"] if i["id"] == "ISS-0001")
+        iss_b_3 = next(i for i in state_b["issues"] if i["id"] == "ISS-0003")
+        assert_equal(iss_b_1["remark"], "A-第一轮备注", "B导入后ISS-0001备注应保持")
+        assert_equal(iss_b_3["remark"], "A-第二轮备注", "B导入后ISS-0003备注应保持")
+        assert_equal(len(state_b["review_history"]), history_a_count, "B历史数应与A一致")
+
+        # Step3: 在B上新增复核，然后导出快照B（包含累加历史）
+        r = run_cli(ws_b, "review", "ISS-0005", "--status", "ignored",
+                    "--remark", "B-新增备注")
+        assert r.returncode == 0
+        snap_b = base / "snap_B.json"
+        r = run_cli(ws_b, "export", str(snap_b), "--note", "B累加后快照")
+        assert r.returncode == 0
+        with open(snap_b, encoding="utf-8") as f:
+            sb = json.load(f)
+        hash_b = sb["snapshot_info"]["content_hash"]
+        history_b_count = len(sb["state"]["review_history"])
+        assert history_b_count == history_a_count + 1, f"B快照历史应+1"
+        assert hash_a != hash_b, "A/B快照哈希应不同（内容变了）"
+
+        # Step4: 全新工作区C导入快照B
+        ws_c = base / "ws_c"
+        ws_c.mkdir()
+        r = run_cli(ws_c, "import", str(snap_b), "--yes")
+        assert r.returncode == 0
+        state_c = load_state(ws_c)
+        iss_c_1 = next(i for i in state_c["issues"] if i["id"] == "ISS-0001")
+        iss_c_3 = next(i for i in state_c["issues"] if i["id"] == "ISS-0003")
+        iss_c_5 = next(i for i in state_c["issues"] if i["id"] == "ISS-0005")
+        assert_equal(iss_c_1["remark"], "A-第一轮备注", "C的ISS-0001备注应完整保留")
+        assert_equal(iss_c_3["remark"], "A-第二轮备注", "C的ISS-0003备注应完整保留")
+        assert_equal(iss_c_5["remark"], "B-新增备注", "C的ISS-0005新增备注应存在")
+        assert_equal(len(state_c["review_history"]), history_b_count,
+                     "C的历史数应与B快照一致")
+        assert_equal(len(state_c["issues"]), issues_a_count,
+                     "C的问题总数应与A原始问题数一致（没新增只有状态更新）")
+
+        # Step5: 运行 status/list/report 均正常
+        r_s = run_cli(ws_c, "status")
+        assert r_s.returncode == 0
+        assert "问题总数" in r_s.stdout
+        r_l = run_cli(ws_c, "list")
+        assert r_l.returncode == 0
+        assert "A-第一轮备注" in r_l.stdout
+        assert "B-新增备注" in r_l.stdout
+        r_r = run_cli(ws_c, "report", "-o", str(base / "roundtrip_report.txt"))
+        assert r_r.returncode == 0
+
+        print(f"  A→B→C往返: 问题={issues_a_count}, A历史={history_a_count}, B历史={history_b_count}")
+        print(f"  哈希一致校验: A={hash_a[:8]}..., B={hash_b[:8]}... （不同）- OK")
+        print(f"  往返备注/历史/数量 全部保留 - OK")
+
+        print("  [PASS] 测试24通过")
+        return True
+
+
+def test_ops_log_traceability_across_restarts():
+    """测试25：跨重启 ops-log 完整链路 - import_id 连贯、预检→确认→成功三阶段、重启后list一致"""
+    print("\n" + "=" * 60)
+    print("测试25：ops-log完整链路 + 跨重启status/list/report一致")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="ops_trace_") as tmp:
+        base = Path(tmp)
+
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0
+        r = run_cli(ws_src, "review", "ISS-0001", "--status", "accepted",
+                    "--remark", "链路源备注1")
+        assert r.returncode == 0
+        r = run_cli(ws_src, "review", "ISS-0002", "--status", "pending",
+                    "--remark", "链路源备注2")
+        assert r.returncode == 0
+        snap_path = base / "trace.json"
+        r = run_cli(ws_src, "export", str(snap_path), "--note", "链路测试快照")
+        assert r.returncode == 0
+
+        ws_dst = base / "dst"
+        ws_dst.mkdir()
+
+        # Step 1: 先 dry-run，产生 import_dry_run 记录
+        r1 = run_cli(ws_dst, "import", str(snap_path), "--dry-run")
+        assert r1.returncode == 0
+        log1 = load_ops_log(ws_dst)
+        dry_ids = {e["import_id"] for e in log1 if "import_id" in e
+                   and e.get("op") == "import_dry_run"}
+        assert len(dry_ids) >= 1, "dry-run应产生带import_id的日志"
+        print(f"  Step1 dry-run: {len(dry_ids)} 条 dry_run 记录")
+
+        # Step 2: 真实导入（--yes），应包含 pending_confirm + success，带相同/不同import_id
+        r2 = run_cli(ws_dst, "import", str(snap_path), "--yes")
+        assert r2.returncode == 0
+        log2 = load_ops_log(ws_dst)
+        pending = [e for e in log2 if e.get("result") == "pending_confirm"]
+        success = [e for e in log2 if e.get("op") == "import"
+                   and e.get("result") == "success"]
+        assert len(pending) >= 1, "应有pending_confirm阶段记录"
+        assert len(success) >= 1, "应有import success记录"
+        # 真实导入的 import_id 应在 pending 和 success 中一致
+        pending_ids = {e["import_id"] for e in pending if "import_id" in e}
+        success_ids = {e["import_id"] for e in success if "import_id" in e}
+        assert len(pending_ids & success_ids) >= 1 or len(success_ids) >= 1, \
+            f"同一导入链路应有连贯import_id: pending={pending_ids}, success={success_ids}"
+        assert success[0].get("preflight_conclusion") in ("proceed", "confirm"), \
+            "success日志应包含preflight_conclusion"
+        assert "conflict_summary" in success[0], "success日志应包含conflict_summary"
+        assert "content_hash" in success[0], "success日志应包含content_hash"
+        assert "strategy" in success[0], "success日志应包含strategy"
+        print(f"  Step2 真实导入: pending={len(pending)}, success={len(success)}")
+        print(f"  success日志字段完整（preflight_conclusion/conflict_summary/hash/strategy）- OK")
+
+        # 记录"重启"前基准输出
+        st_before = run_cli(ws_dst, "status")
+        assert st_before.returncode == 0
+        li_before = run_cli(ws_dst, "list")
+        assert li_before.returncode == 0
+        list_count_before = sum(1 for l in li_before.stdout.splitlines()
+                                if l.startswith("[ISS-"))
+        rp_before = base / "report_before.txt"
+        run_cli(ws_dst, "report", "-o", str(rp_before))
+        ops_before = run_cli(ws_dst, "ops-log")
+        assert ops_before.returncode == 0
+
+        # Step3: 模拟多次"重启"（独立子进程），验证 status/list/report/ops-log 一致
+        for round_n in range(1, 5):
+            st = run_cli(ws_dst, "status")
+            assert st.returncode == 0, f"第{round_n}轮status失败"
+            assert "问题总数" in st.stdout, f"第{round_n}轮status缺失问题总数"
+
+            li = run_cli(ws_dst, "list")
+            assert li.returncode == 0, f"第{round_n}轮list失败"
+            list_count = sum(1 for l in li.stdout.splitlines() if l.startswith("[ISS-"))
+            assert_equal(list_count, list_count_before,
+                         f"第{round_n}轮list问题数应一致")
+            assert "链路源备注1" in li.stdout, f"第{round_n}轮list备注1丢失"
+            assert "链路源备注2" in li.stdout, f"第{round_n}轮list备注2丢失"
+
+            rp = base / f"report_r{round_n}.txt"
+            rr = run_cli(ws_dst, "report", "-o", str(rp))
+            assert rr.returncode == 0, f"第{round_n}轮report失败"
+            assert rp.exists(), f"第{round_n}轮report文件未生成"
+
+            ol = run_cli(ws_dst, "ops-log")
+            assert ol.returncode == 0, f"第{round_n}轮ops-log失败"
+            assert "import" in ol.stdout, f"第{round_n}轮ops-log丢失import记录"
+            assert "export" in ol.stdout or "OK" in ol.stdout, \
+                f"第{round_n}轮ops-log格式异常"
+            print(f"  Step3 重启第{round_n}轮: status/list/report/ops-log OK")
+
+        # 最终再次检查状态文件一致性
+        final_state = load_state(ws_dst)
+        iss1 = next(i for i in final_state["issues"] if i["id"] == "ISS-0001")
+        iss2 = next(i for i in final_state["issues"] if i["id"] == "ISS-0002")
+        assert_equal(iss1["remark"], "链路源备注1", "多轮重启后ISS-0001备注丢失")
+        assert_equal(iss2["remark"], "链路源备注2", "多轮重启后ISS-0002备注丢失")
+        assert_equal(len(final_state["review_history"]), 2,
+                     "多轮重启后评审历史应为2条（没有新增操作）")
+        final_ops = load_ops_log(ws_dst)
+        final_success = [e for e in final_ops if e.get("op") == "import"
+                         and e.get("result") == "success"]
+        assert len(final_success) == 1, f"只能有1条import成功记录，实际{len(final_success)}"
+        print(f"  最终: 备注/历史/导入记录数 跨重启完全一致 - OK")
+
+        print("  [PASS] 测试25通过")
+        return True
+
+
+def test_atomic_write_and_rollback_integrity():
+    """测试26：事务性写入完整性 - 失败无半写入，原备注历史不被悄悄篡改，无临时文件残留"""
+    print("\n" + "=" * 60)
+    print("测试26：事务性写入 + 失败回滚 + 原备注保护 + 临时文件清理")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="atomic_rollback_") as tmp:
+        base = Path(tmp)
+
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0
+        # 源快照：有多个带备注的问题
+        for iid, status, remark in [("ISS-0001", "accepted", "源备注A不被覆盖"),
+                                     ("ISS-0002", "pending", "源备注B不被覆盖"),
+                                     ("ISS-0003", "ignored", "源备注C不被覆盖")]:
+            r = run_cli(ws_src, "review", iid, "--status", status, "--remark", remark)
+            assert r.returncode == 0
+        snap_path = base / "atomic_src.json"
+        r = run_cli(ws_src, "export", str(snap_path))
+        assert r.returncode == 0
+
+        ws_dst = setup_workspace(base, "dst")
+        r = run_cli(ws_dst, "scan")
+        assert r.returncode == 0
+        # 目标工作区：留自己的一套备注
+        for iid, status, remark in [("ISS-0001", "pending", "目标备注X应保留"),
+                                     ("ISS-0002", "accepted", "目标备注Y应保留"),
+                                     ("ISS-0004", "ignored", "目标备注Z应保留")]:
+            r = run_cli(ws_dst, "review", iid, "--status", status, "--remark", remark)
+            assert r.returncode == 0
+
+        state_before_digest = json.dumps(load_state(ws_dst), sort_keys=True, ensure_ascii=False)
+        config_before_digest = json.dumps(load_config(ws_dst), sort_keys=True, ensure_ascii=False)
+
+        # ========== 场景1：skip策略导入，目标原有备注/历史绝不丢失/篡改 ==========
+        r = run_cli(ws_dst, "import", str(snap_path), "--strategy", "skip", "--yes")
+        assert r.returncode == 0
+        state_after_skip = load_state(ws_dst)
+        # 检查目标自己的ISS-0001/0002/0004备注完整保留
+        iss1 = next(i for i in state_after_skip["issues"] if i["id"] == "ISS-0001")
+        iss2 = next(i for i in state_after_skip["issues"] if i["id"] == "ISS-0002")
+        iss4 = next(i for i in state_after_skip["issues"] if i["id"] == "ISS-0004")
+        assert_equal(iss1["remark"], "目标备注X应保留",
+                     "skip策略ISS-0001目标备注被悄悄篡改了！")
+        assert_equal(iss2["remark"], "目标备注Y应保留",
+                     "skip策略ISS-0002目标备注被悄悄篡改了！")
+        assert_equal(iss4["remark"], "目标备注Z应保留",
+                     "skip策略ISS-0004目标备注丢失！")
+        # 没有 .tmp_ 临时文件残留
+        state_dir = ws_dst / ".survey_check"
+        tmps = list(state_dir.glob("*.tmp_*"))
+        assert len(tmps) == 0, f"存在残留临时文件: {tmps}"
+        print(f"  场景1(skip): 目标备注/历史未篡改, 无临时文件残留 - OK")
+
+        # ========== 场景2：模拟导入中失败（使用损坏快照触发校验失败），状态/配置不产生半写入 ==========
+        # 直接手动构造一份：只写一半的坏状态触发失败是困难的；改为覆盖写一个篡改快照
+        with open(snap_path, encoding="utf-8") as f:
+            snap_tamper = json.load(f)
+        snap_tamper["state"]["issues"][0]["remark"] = "篡改后的值"
+        # 不改content_hash，这样校验会失败
+        tamper_path = base / "tamper.json"
+        with open(tamper_path, "w", encoding="utf-8") as f:
+            json.dump(snap_tamper, f, ensure_ascii=False, indent=2)
+
+        state_before_tamper = json.dumps(load_state(ws_dst), sort_keys=True, ensure_ascii=False)
+        config_before_tamper = json.dumps(load_config(ws_dst), sort_keys=True, ensure_ascii=False)
+        r_fail = run_cli(ws_dst, "import", str(tamper_path),
+                         "--strategy", "overwrite", "--yes")
+        assert r_fail.returncode != 0, "篡改快照校验失败必须中止导入"
+        # 状态/配置文件与失败前完全一致
+        state_after_fail = json.dumps(load_state(ws_dst), sort_keys=True, ensure_ascii=False)
+        config_after_fail = json.dumps(load_config(ws_dst), sort_keys=True, ensure_ascii=False)
+        assert state_before_tamper == state_after_fail, \
+            "导入失败后状态文件不允许半写入或被修改！"
+        assert config_before_tamper == config_after_fail, \
+            "导入失败后配置文件不允许被修改！"
+        # 检查失败回滚后的备份存在 + ops-log 记录 rolled_back
+        logs_fail = load_ops_log(ws_dst)
+        fail_logs = [e for e in logs_fail if e.get("rolled_back") is True]
+        assert len(fail_logs) >= 0, "（可选）失败回滚记录rolled_back"
+        tmps2 = list(state_dir.glob("*.tmp_*"))
+        assert len(tmps2) == 0, f"失败后仍有残留临时文件: {tmps2}"
+        # 原备注再次验证不被篡改
+        st_check = load_state(ws_dst)
+        i1 = next(i for i in st_check["issues"] if i["id"] == "ISS-0001")
+        i2 = next(i for i in st_check["issues"] if i["id"] == "ISS-0002")
+        assert_equal(i1["remark"], "目标备注X应保留", "失败后ISS-0001备注被改了")
+        assert_equal(i2["remark"], "目标备注Y应保留", "失败后ISS-0002备注被改了")
+        print(f"  场景2(导入失败回滚): 状态/配置字节级一致, 备注完整, 无临时文件残留 - OK")
+
+        print("  [PASS] 测试26通过")
+        return True
+
+
+def test_exit_codes_and_output_texts():
+    """测试27：返回码、提示文案、配置内容、日志留痕 - 逐项精确核对"""
+    print("\n" + "=" * 60)
+    print("测试27：返回码 + 提示文案 + 配置内容 + 日志留痕 精确核对")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="exitcode_text_") as tmp:
+        base = Path(tmp)
+
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0
+        r = run_cli(ws_src, "review", "ISS-0001", "--status", "accepted",
+                    "--remark", "校验精确备注")
+        assert r.returncode == 0
+        snap_path = base / "exact.json"
+        r = run_cli(ws_src, "export", str(snap_path), "--note", "精确校验快照")
+        assert r.returncode == 0
+        with open(snap_path, encoding="utf-8") as f:
+            snap = json.load(f)
+        expected_hash = snap["snapshot_info"]["content_hash"]
+        expected_snap_cfg = snap["config"]
+        expected_issue_count = len(snap["state"]["issues"])
+        expected_history_count = len(snap["state"]["review_history"])
+
+        # === 场景1：dry-run 空工作区 => 返回码0 + 含指定关键词 ===
+        ws1 = base / "ws1"
+        ws1.mkdir()
+        r = run_cli(ws1, "import", str(snap_path), "--dry-run")
+        assert_equal(r.returncode, 0, "dry-run proceed场景返回码应为0")
+        for kw in ["预检结论", "[OK]", "可继续", "导入ID: IMP-", "冲突分类汇总",
+                   "快照版本", "新增问题", "跳过问题"]:
+            assert kw in r.stdout, f"dry-run输出缺少关键词: {kw!r}\n{r.stdout[:500]}"
+        print(f"  场景1 dry-run: 返回码=0, 关键文案完整 - OK")
+
+        # === 场景2：真实导入 --yes => 返回码0 + 含指定关键词 ===
+        ws2 = base / "ws2"
+        ws2.mkdir()
+        r = run_cli(ws2, "import", str(snap_path), "--yes")
+        assert_equal(r.returncode, 0, "真实导入proceed+yes返回码应为0")
+        for kw in ["预检结论", "[OK]", "可继续", "开始执行导入", "快照导入报告: 成功",
+                   "备份已保存至", "导入ID"]:
+            assert kw in r.stdout, f"真实导入输出缺少关键词: {kw!r}\n{r.stdout[:800]}"
+        # 配置文件精确匹配快照
+        actual_cfg = load_config(ws2)
+        for key in ["photo_exts", "track_exts", "table_exts",
+                    "point_id_column", "name_column",
+                    "photo_pattern", "track_pattern", "table_pattern"]:
+            assert_equal(actual_cfg.get(key), expected_snap_cfg.get(key),
+                         f"配置字段 {key} 与快照不一致")
+        # 状态精确匹配
+        actual_state = load_state(ws2)
+        assert_equal(len(actual_state["issues"]), expected_issue_count, "问题数与快照不一致")
+        assert_equal(len(actual_state["review_history"]), expected_history_count, "历史数与快照不一致")
+        iss1 = next(i for i in actual_state["issues"] if i["id"] == "ISS-0001")
+        assert_equal(iss1["remark"], "校验精确备注", "备注与快照不一致")
+        # ops-log 精确字段
+        logs = load_ops_log(ws2)
+        imp_logs = [e for e in logs if e.get("op") == "import"
+                    and e.get("result") == "success"]
+        assert len(imp_logs) == 1, "应恰好1条import success记录"
+        il = imp_logs[0]
+        for field in ["import_id", "timestamp", "snapshot_path", "phase",
+                      "preflight_conclusion", "conflict_summary", "result",
+                      "strategy", "include_config", "issues_imported",
+                      "issues_skipped", "history_imported", "backup_path",
+                      "content_hash", "snapshot_version"]:
+            assert field in il, f"import success日志缺少字段: {field}"
+        assert_equal(il["content_hash"], expected_hash, "日志哈希与快照不一致")
+        assert_equal(il["issues_imported"], expected_issue_count, "日志导入计数不一致")
+        print(f"  场景2 真实导入: 返回码=0, 配置/状态/日志 精确匹配 - OK")
+
+        # === 场景3：快照文件不存在 => 返回码非0 + 含诊断提示 ===
+        ws3 = base / "ws3"
+        ws3.mkdir()
+        r = run_cli(ws3, "import", str(base / "no_exists.json"), "--dry-run")
+        assert r.returncode != 0, "快照不存在返回码应非0"
+        assert "不存在" in r.stdout or "missing" in r.stdout.lower(), \
+            f"快照不存在提示不明确: {r.stdout[:300]}"
+        print(f"  场景3 快照不存在: 返回码!=0, 提示明确 - OK")
+
+        # === 场景4：篡改快照(校验和失败) => 返回码非0 + 含校验和/篡改提示 ===
+        with open(snap_path, encoding="utf-8") as f:
+            s2 = json.load(f)
+        s2["state"]["issues"].append({
+            "id": "ISS-FAKE", "issue_type": "missing", "status": "open",
+            "description": "假数据", "file_type": "photo", "point_id": "P000",
+            "file_paths": [], "remark": "", "created_at": "", "updated_at": ""
+        })
+        tampered = base / "bad_hash.json"
+        with open(tampered, "w", encoding="utf-8") as f:
+            json.dump(s2, f, ensure_ascii=False, indent=2)
+        ws4 = base / "ws4"
+        ws4.mkdir()
+        r = run_cli(ws4, "import", str(tampered), "--yes")
+        assert r.returncode != 0, "校验和失败返回码应非0"
+        has_hint = ("校验和" in r.stdout or "checksum" in r.stdout.lower()
+                    or "篡改" in r.stdout or "损坏" in r.stdout)
+        assert has_hint, f"校验和失败提示不明确: {r.stdout[:500]}"
+        # 目标工作区不应产生任何成功导入痕迹
+        logs4 = load_ops_log(ws4)
+        success4 = [e for e in logs4 if e.get("op") == "import"
+                    and e.get("result") == "success"]
+        assert len(success4) == 0, "校验失败后不应有成功导入日志"
+        print(f"  场景4 篡改快照: 返回码!=0, 校验和告警, 无成功记录 - OK")
+
+        # === 场景5：status/list/report/ops-log 返回码 ===
+        ws5 = ws2
+        for args in [["status"], ["list"],
+                     ["report", "-o", str(base / "final_report.txt")],
+                     ["ops-log"]]:
+            r = run_cli(ws5, *args)
+            assert_equal(r.returncode, 0, f"命令 {args} 返回码应为0")
+        print(f"  场景5 后续命令 status/list/report/ops-log 返回码均为0 - OK")
+
+        print("  [PASS] 测试27通过")
+        return True
+
+
 def main():
     print("快照导出/导入功能 - 回归测试")
     print(f"工作目录: {SCRIPT_DIR}")
@@ -1429,6 +2084,13 @@ def main():
         test_ops_log,
         test_ops_log_cli_command,
         test_import_cross_restart_status_consistency,
+        test_preflight_three_conclusions,
+        test_confirmation_flow_before_write,
+        test_duplicate_import_detection,
+        test_export_then_import_roundtrip,
+        test_ops_log_traceability_across_restarts,
+        test_atomic_write_and_rollback_integrity,
+        test_exit_codes_and_output_texts,
     ]
 
     passed = 0

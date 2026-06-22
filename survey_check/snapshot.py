@@ -41,6 +41,18 @@ REQUIRED_SNAPSHOT_INFO_KEYS = {"snapshot_version", "exported_at"}
 REQUIRED_STATE_KEYS = {"state_version", "issues", "review_history", "undo_stack"}
 REQUIRED_CONFIG_KEYS = {"config_version", "manifest_path", "photo_dir", "track_dir", "table_dir"}
 
+PREFLIGHT_PROCEED = "proceed"
+PREFLIGHT_CONFIRM = "confirm"
+PREFLIGHT_ABORT = "abort"
+
+CATEGORY_CONFIG_MISSING = "config_missing"
+CATEGORY_RESIDUAL_STATE = "residual_state"
+CATEGORY_VERSION_MISMATCH = "version_mismatch"
+CATEGORY_TARGET_HAS_DATA = "target_has_data"
+CATEGORY_SNAPSHOT_INVALID = "snapshot_invalid"
+CATEGORY_TARGET_INVALID = "target_invalid"
+CATEGORY_CONTENT_CONFLICT = "content_conflict"
+
 
 @dataclass
 class SnapshotInfo:
@@ -62,6 +74,7 @@ class ImportConflict:
     conflict_type: str
     severity: str
     message: str
+    category: str = ""
     details: Dict[str, Any] = field(default_factory=dict)
     hint: str = ""
 
@@ -80,6 +93,9 @@ class ImportReport:
     backup_path: str = ""
     snapshot_info: Optional[SnapshotInfo] = None
     phase: str = ""
+    preflight_conclusion: str = ""
+    conflict_summary: Dict[str, int] = field(default_factory=dict)
+    import_id: str = ""
 
     @property
     def has_errors(self) -> bool:
@@ -88,6 +104,14 @@ class ImportReport:
     @property
     def has_warnings(self) -> bool:
         return any(c.severity == "warning" for c in self.conflicts)
+
+    @property
+    def abort_conflicts(self) -> List[ImportConflict]:
+        return [c for c in self.conflicts if c.severity == "error"]
+
+    @property
+    def confirm_conflicts(self) -> List[ImportConflict]:
+        return [c for c in self.conflicts if c.severity == "warning"]
 
 
 def _compute_content_hash(config_dict: dict, state_dict: dict) -> str:
@@ -103,6 +127,7 @@ def _validate_snapshot_structure(data: dict) -> List[ImportConflict]:
         conflicts.append(ImportConflict(
             conflict_type="snapshot_missing_keys",
             severity="error",
+            category=CATEGORY_SNAPSHOT_INVALID,
             message=f"快照缺少顶层字段: {', '.join(sorted(missing_top))}",
             hint="快照文件可能已损坏或不完整，请重新导出",
         ))
@@ -114,6 +139,7 @@ def _validate_snapshot_structure(data: dict) -> List[ImportConflict]:
         conflicts.append(ImportConflict(
             conflict_type="snapshot_info_missing",
             severity="error",
+            category=CATEGORY_SNAPSHOT_INVALID,
             message=f"快照信息缺少字段: {', '.join(sorted(missing_info))}",
             hint="快照元信息不完整，请确认快照来源是否可靠",
         ))
@@ -124,6 +150,7 @@ def _validate_snapshot_structure(data: dict) -> List[ImportConflict]:
         conflicts.append(ImportConflict(
             conflict_type="snapshot_state_missing",
             severity="error",
+            category=CATEGORY_SNAPSHOT_INVALID,
             message=f"快照状态缺少字段: {', '.join(sorted(missing_state))}",
             hint="快照状态数据不完整，请重新导出",
         ))
@@ -134,6 +161,7 @@ def _validate_snapshot_structure(data: dict) -> List[ImportConflict]:
         conflicts.append(ImportConflict(
             conflict_type="snapshot_config_missing",
             severity="error",
+            category=CATEGORY_CONFIG_MISSING,
             message=f"快照配置缺少字段: {', '.join(sorted(missing_cfg))}",
             hint="快照配置不完整，请重新导出",
         ))
@@ -147,6 +175,7 @@ def _validate_version_compatibility(info: SnapshotInfo) -> List[ImportConflict]:
         conflicts.append(ImportConflict(
             conflict_type="snapshot_version_unsupported",
             severity="error",
+            category=CATEGORY_VERSION_MISMATCH,
             message=f"快照版本 {info.snapshot_version} 不受支持（支持: {', '.join(sorted(SUPPORTED_SNAPSHOT_VERSIONS))}）",
             hint="请升级 survey-check 或使用匹配版本的快照",
         ))
@@ -154,6 +183,7 @@ def _validate_version_compatibility(info: SnapshotInfo) -> List[ImportConflict]:
         conflicts.append(ImportConflict(
             conflict_type="state_version_unsupported",
             severity="error",
+            category=CATEGORY_VERSION_MISMATCH,
             message=f"快照状态版本 {info.state_version} 不受支持（支持: {', '.join(sorted(SUPPORTED_STATE_VERSIONS))}）",
             hint="请升级 survey-check 或重新导出快照",
         ))
@@ -161,6 +191,7 @@ def _validate_version_compatibility(info: SnapshotInfo) -> List[ImportConflict]:
         conflicts.append(ImportConflict(
             conflict_type="config_version_unsupported",
             severity="error",
+            category=CATEGORY_VERSION_MISMATCH,
             message=f"快照配置版本 {info.config_version} 不受支持（支持: {', '.join(sorted(SUPPORTED_CONFIG_VERSIONS))}）",
             hint="请升级 survey-check 或重新导出快照",
         ))
@@ -173,6 +204,7 @@ def _validate_integrity(data: dict, info: SnapshotInfo) -> List[ImportConflict]:
         conflicts.append(ImportConflict(
             conflict_type="snapshot_no_checksum",
             severity="warning",
+            category=CATEGORY_SNAPSHOT_INVALID,
             message="快照无内容校验和，无法验证完整性",
             hint="该快照可能由旧版工具导出，建议重新导出以附带校验和",
         ))
@@ -182,6 +214,7 @@ def _validate_integrity(data: dict, info: SnapshotInfo) -> List[ImportConflict]:
         conflicts.append(ImportConflict(
             conflict_type="snapshot_checksum_mismatch",
             severity="error",
+            category=CATEGORY_SNAPSHOT_INVALID,
             message=f"快照内容校验和不匹配（期望 {info.content_hash}，实际 {actual_hash}）",
             hint="快照文件可能在导出后被篡改或传输损坏，请重新导出",
         ))
@@ -199,6 +232,7 @@ def _validate_target_workspace(workspace: str) -> List[ImportConflict]:
             conflicts.append(ImportConflict(
                 conflict_type="target_dir_not_creatable",
                 severity="error",
+                category=CATEGORY_TARGET_INVALID,
                 message=f"目标目录不存在且无法创建: {workspace} ({e})",
                 hint="请检查路径是否正确，或手动创建目录",
             ))
@@ -214,6 +248,7 @@ def _validate_target_workspace(workspace: str) -> List[ImportConflict]:
         conflicts.append(ImportConflict(
             conflict_type="target_dir_not_writable",
             severity="error",
+            category=CATEGORY_TARGET_INVALID,
             message=f"目标目录不可写: {workspace} ({e})",
             hint="请检查目录权限，确保当前用户有写入权限",
         ))
@@ -234,6 +269,7 @@ def _detect_residual_conflicts(workspace: str) -> List[ImportConflict]:
         conflicts.append(ImportConflict(
             conflict_type="residual_state_no_config",
             severity="error",
+            category=CATEGORY_RESIDUAL_STATE,
             message="目标目录存在状态文件但缺少配置文件（残留状态），可能是不完整的旧工作区",
             hint="请先手动清理残留状态文件（删除 .survey_check/ 目录），或先运行 'survey-check init' 初始化后再导入",
         ))
@@ -246,6 +282,7 @@ def _detect_residual_conflicts(workspace: str) -> List[ImportConflict]:
                 conflicts.append(ImportConflict(
                     conflict_type="residual_config_corrupted",
                     severity="warning",
+                    category=CATEGORY_RESIDUAL_STATE,
                     message="目标配置文件内容异常（缺少 config_version）",
                     hint="配置文件可能已损坏，导入时将从快照覆盖；建议备份后手动检查",
                 ))
@@ -253,6 +290,7 @@ def _detect_residual_conflicts(workspace: str) -> List[ImportConflict]:
             conflicts.append(ImportConflict(
                 conflict_type="residual_config_corrupted",
                 severity="warning",
+                category=CATEGORY_RESIDUAL_STATE,
                 message=f"目标配置文件无法解析: {e}",
                 hint="配置文件可能已损坏，导入时将从快照覆盖；建议备份后手动检查",
             ))
@@ -265,6 +303,7 @@ def _detect_residual_conflicts(workspace: str) -> List[ImportConflict]:
                 conflicts.append(ImportConflict(
                     conflict_type="residual_state_corrupted",
                     severity="warning",
+                    category=CATEGORY_RESIDUAL_STATE,
                     message="目标状态文件内容异常（缺少 issues 字段）",
                     hint="状态文件可能已损坏，导入时将自动备份并覆盖；建议备份后手动检查",
                 ))
@@ -272,6 +311,7 @@ def _detect_residual_conflicts(workspace: str) -> List[ImportConflict]:
             conflicts.append(ImportConflict(
                 conflict_type="residual_state_corrupted",
                 severity="warning",
+                category=CATEGORY_RESIDUAL_STATE,
                 message=f"目标状态文件无法解析: {e}",
                 hint="状态文件可能已损坏，导入时将自动备份并覆盖；建议备份后手动检查",
             ))
@@ -283,11 +323,75 @@ def _detect_residual_conflicts(workspace: str) -> List[ImportConflict]:
             conflicts.append(ImportConflict(
                 conflict_type="stale_backups",
                 severity="info",
+                category=CATEGORY_TARGET_HAS_DATA,
                 message=f"目标工作区已有 {n_backups} 个导入备份",
                 hint="如需清理旧备份，可手动删除 .survey_check/backups/ 目录中的旧条目",
             ))
 
     return conflicts
+
+
+def _generate_import_id() -> str:
+    return f"IMP-{datetime.now().strftime('%Y%m%d%H%M%S')}-{os.getpid():05d}"
+
+
+def _compute_conflict_summary(conflicts: List[ImportConflict]) -> Dict[str, int]:
+    summary: Dict[str, int] = {}
+    for c in conflicts:
+        cat = c.category or "uncategorized"
+        summary[cat] = summary.get(cat, 0) + 1
+    return summary
+
+
+def _determine_preflight_conclusion(conflicts: List[ImportConflict]) -> str:
+    has_errors = any(c.severity == "error" for c in conflicts)
+    has_warnings = any(c.severity == "warning" for c in conflicts)
+    if has_errors:
+        return PREFLIGHT_ABORT
+    if has_warnings:
+        return PREFLIGHT_CONFIRM
+    return PREFLIGHT_PROCEED
+
+
+def _check_duplicate_import(workspace: str, content_hash: str) -> Optional[dict]:
+    if not content_hash:
+        return None
+    entries = read_ops_log(workspace, op_filter="import", limit=100)
+    for entry in reversed(entries):
+        if (entry.get("result") == "success"
+                and entry.get("content_hash") == content_hash
+                and not entry.get("rolled_back")):
+            return entry
+    return None
+
+
+def _atomic_write_json(path: str, data: dict) -> None:
+    tmp_path = f"{path}.tmp_{os.getpid()}_{datetime.now().strftime('%H%M%S%f')}"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+        raise
+
+
+def save_config_atomic(workspace: str, config: SurveyConfig) -> None:
+    config_path = get_config_path(workspace)
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    _atomic_write_json(config_path, config.to_dict())
+
+
+def save_state_atomic(workspace: str, state: WorkspaceState) -> None:
+    state_path = get_state_path(workspace)
+    os.makedirs(os.path.dirname(state_path), exist_ok=True)
+    _atomic_write_json(state_path, state.to_dict())
 
 
 def export_snapshot(workspace: str, output_path: str, note: str = "") -> SnapshotInfo:
@@ -449,23 +553,56 @@ def import_snapshot(workspace: str, snapshot_path: str,
                      strategy=strategy, include_config=include_config)
 
 
+def _build_preflight_log(report: ImportReport, snapshot_path: str,
+                        strategy: str, include_config: bool) -> dict:
+    return {
+        "op": "import_preflight" if report.dry_run else "import",
+        "timestamp": datetime.now().isoformat(),
+        "import_id": report.import_id,
+        "snapshot_path": snapshot_path,
+        "dry_run": report.dry_run,
+        "phase": report.phase,
+        "preflight_conclusion": report.preflight_conclusion,
+        "conflict_summary": report.conflict_summary,
+        "conflicts": [
+            {
+                "conflict_type": c.conflict_type,
+                "severity": c.severity,
+                "category": c.category,
+                "message": c.message,
+            }
+            for c in report.conflicts
+        ],
+        "strategy": strategy,
+        "include_config": include_config,
+        "snapshot_info": (asdict(report.snapshot_info)
+                          if report.snapshot_info else None),
+        "result": "preflight_complete" if report.dry_run else "pending_confirm",
+    }
+
+
 def _do_import(workspace: str, snapshot_path: str,
               dry_run: bool = False,
               strategy: str = "skip",
               include_config: bool = False) -> ImportReport:
     report = ImportReport(dry_run=dry_run)
+    report.import_id = _generate_import_id()
+
+    def _finalize_preflight():
+        report.conflict_summary = _compute_conflict_summary(report.conflicts)
+        report.preflight_conclusion = _determine_preflight_conclusion(report.conflicts)
 
     if not os.path.exists(snapshot_path):
         report.conflicts.append(ImportConflict(
             conflict_type="snapshot_missing",
             severity="error",
+            category=CATEGORY_SNAPSHOT_INVALID,
             message=f"快照文件不存在: {snapshot_path}",
             hint="请检查快照文件路径是否正确",
         ))
+        _finalize_preflight()
         _append_ops_log(workspace, {
-            "op": "import",
-            "timestamp": datetime.now().isoformat(),
-            "snapshot_path": snapshot_path,
+            **_build_preflight_log(report, snapshot_path, strategy, include_config),
             "result": "failure",
             "failure_phase": "file_check",
             "failure_reason": "snapshot_missing",
@@ -480,13 +617,13 @@ def _do_import(workspace: str, snapshot_path: str,
         report.conflicts.append(ImportConflict(
             conflict_type="snapshot_invalid_json",
             severity="error",
+            category=CATEGORY_SNAPSHOT_INVALID,
             message=f"快照文件不是有效的 JSON: {e}",
             hint="文件可能在传输中损坏，请重新导出快照",
         ))
+        _finalize_preflight()
         _append_ops_log(workspace, {
-            "op": "import",
-            "timestamp": datetime.now().isoformat(),
-            "snapshot_path": snapshot_path,
+            **_build_preflight_log(report, snapshot_path, strategy, include_config),
             "result": "failure",
             "failure_phase": "snapshot_validation",
             "failure_reason": "invalid_json",
@@ -496,13 +633,13 @@ def _do_import(workspace: str, snapshot_path: str,
         report.conflicts.append(ImportConflict(
             conflict_type="snapshot_read_error",
             severity="error",
+            category=CATEGORY_SNAPSHOT_INVALID,
             message=f"快照文件读取失败: {e}",
             hint="请检查文件是否存在且可读",
         ))
+        _finalize_preflight()
         _append_ops_log(workspace, {
-            "op": "import",
-            "timestamp": datetime.now().isoformat(),
-            "snapshot_path": snapshot_path,
+            **_build_preflight_log(report, snapshot_path, strategy, include_config),
             "result": "failure",
             "failure_phase": "snapshot_validation",
             "failure_reason": "read_error",
@@ -512,14 +649,12 @@ def _do_import(workspace: str, snapshot_path: str,
     structure_conflicts = _validate_snapshot_structure(raw_data)
     report.conflicts.extend(structure_conflicts)
     if report.has_errors:
+        _finalize_preflight()
         _append_ops_log(workspace, {
-            "op": "import",
-            "timestamp": datetime.now().isoformat(),
-            "snapshot_path": snapshot_path,
+            **_build_preflight_log(report, snapshot_path, strategy, include_config),
             "result": "failure",
             "failure_phase": "snapshot_validation",
             "failure_reason": "structure_invalid",
-            "conflicts": [c.conflict_type for c in structure_conflicts],
         })
         return report
 
@@ -530,13 +665,13 @@ def _do_import(workspace: str, snapshot_path: str,
         report.conflicts.append(ImportConflict(
             conflict_type="snapshot_parse_error",
             severity="error",
+            category=CATEGORY_SNAPSHOT_INVALID,
             message=f"快照数据解析失败: {e}",
             hint="快照内部数据格式异常，请确认导出工具版本并重新导出",
         ))
+        _finalize_preflight()
         _append_ops_log(workspace, {
-            "op": "import",
-            "timestamp": datetime.now().isoformat(),
-            "snapshot_path": snapshot_path,
+            **_build_preflight_log(report, snapshot_path, strategy, include_config),
             "result": "failure",
             "failure_phase": "snapshot_validation",
             "failure_reason": "parse_error",
@@ -546,24 +681,21 @@ def _do_import(workspace: str, snapshot_path: str,
     version_conflicts = _validate_version_compatibility(snap_info)
     report.conflicts.extend(version_conflicts)
     if report.has_errors:
+        _finalize_preflight()
         _append_ops_log(workspace, {
-            "op": "import",
-            "timestamp": datetime.now().isoformat(),
-            "snapshot_path": snapshot_path,
+            **_build_preflight_log(report, snapshot_path, strategy, include_config),
             "result": "failure",
             "failure_phase": "version_check",
             "failure_reason": "version_unsupported",
-            "conflicts": [c.conflict_type for c in version_conflicts],
         })
         return report
 
     integrity_conflicts = _validate_integrity(raw_data, snap_info)
     report.conflicts.extend(integrity_conflicts)
     if report.has_errors:
+        _finalize_preflight()
         _append_ops_log(workspace, {
-            "op": "import",
-            "timestamp": datetime.now().isoformat(),
-            "snapshot_path": snapshot_path,
+            **_build_preflight_log(report, snapshot_path, strategy, include_config),
             "result": "failure",
             "failure_phase": "integrity_check",
             "failure_reason": "checksum_mismatch",
@@ -574,28 +706,24 @@ def _do_import(workspace: str, snapshot_path: str,
     target_conflicts = _validate_target_workspace(workspace)
     report.conflicts.extend(target_conflicts)
     if report.has_errors:
+        _finalize_preflight()
         _append_ops_log(workspace, {
-            "op": "import",
-            "timestamp": datetime.now().isoformat(),
-            "snapshot_path": snapshot_path,
+            **_build_preflight_log(report, snapshot_path, strategy, include_config),
             "result": "failure",
             "failure_phase": "target_validation",
             "failure_reason": "target_dir_invalid",
-            "conflicts": [c.conflict_type for c in target_conflicts],
         })
         return report
 
     residual_conflicts = _detect_residual_conflicts(workspace)
     report.conflicts.extend(residual_conflicts)
     if report.has_errors:
+        _finalize_preflight()
         _append_ops_log(workspace, {
-            "op": "import",
-            "timestamp": datetime.now().isoformat(),
-            "snapshot_path": snapshot_path,
+            **_build_preflight_log(report, snapshot_path, strategy, include_config),
             "result": "failure",
             "failure_phase": "target_validation",
             "failure_reason": "residual_conflict",
-            "conflicts": [c.conflict_type for c in residual_conflicts],
         })
         return report
 
@@ -603,12 +731,24 @@ def _do_import(workspace: str, snapshot_path: str,
     target_config = load_config(workspace) if os.path.exists(get_config_path(workspace)) else None
     target_state = load_state(workspace)
 
+    has_existing_data = (
+        target_config is not None
+        or len(target_state.issues) > 0
+        or len(target_state.review_history) > 0
+        or len(target_state.survey_points) > 0
+    )
+    if has_existing_data:
+        target_cat = CATEGORY_TARGET_HAS_DATA
+    else:
+        target_cat = CATEGORY_CONFIG_MISSING
+
     config_diffs = _compare_configs(snap_config, target_config) if target_config else []
 
     if target_config is None:
         report.conflicts.append(ImportConflict(
             conflict_type="no_target_config",
             severity="info",
+            category=target_cat,
             message="目标工作区无配置，将从快照恢复配置",
             hint="导入将自动恢复配置，无需额外操作",
         ))
@@ -617,6 +757,7 @@ def _do_import(workspace: str, snapshot_path: str,
         report.conflicts.append(ImportConflict(
             conflict_type="config_mismatch",
             severity="warning",
+            category=CATEGORY_CONTENT_CONFLICT,
             message=f"配置不一致（{len(config_diffs)} 处差异: {diff_desc}）",
             details={"diffs": config_diffs},
             hint="使用 --include-config 可覆盖目标配置，否则保留当前配置",
@@ -629,6 +770,7 @@ def _do_import(workspace: str, snapshot_path: str,
             report.conflicts.append(ImportConflict(
                 conflict_type="target_newer_scan",
                 severity="warning",
+                category=CATEGORY_CONTENT_CONFLICT,
                 message=f"目标工作区扫描时间 ({target_time}) 晚于快照 ({snap_time})，目标可能有更新的结果",
                 hint="建议先备份目标工作区（使用 export 命令），再决定是否导入",
             ))
@@ -639,22 +781,66 @@ def _do_import(workspace: str, snapshot_path: str,
         report.conflicts.append(ImportConflict(
             conflict_type="issue_id_conflict",
             severity="warning" if strategy != "skip" else "info",
+            category=CATEGORY_CONTENT_CONFLICT,
             message=f"发现 {len(conflicting_ids)} 个问题编号冲突，将使用 '{strategy}' 策略处理",
             details={"conflicting_ids": conflicting_ids, "strategy": strategy},
             hint=f"可使用 --strategy 指定冲突处理方式: skip(保留目标)/overwrite(覆盖)/renumber(重编号)/merge(智能合并)",
         ))
 
+    if len(target_state.issues) > 0 and len(snap_state.issues) > 0:
+        report.conflicts.append(ImportConflict(
+            conflict_type="target_has_existing_issues",
+            severity="warning",
+            category=CATEGORY_TARGET_HAS_DATA,
+            message=f"目标工作区已有 {len(target_state.issues)} 个问题记录，快照含 {len(snap_state.issues)} 个",
+            hint="请确认导入策略：skip 保留目标，overwrite 覆盖，renumber 并存，merge 智能合并",
+        ))
+
+    duplicate_entry = _check_duplicate_import(workspace, snap_info.content_hash)
+    if duplicate_entry:
+        report.conflicts.append(ImportConflict(
+            conflict_type="duplicate_import_warning",
+            severity="warning",
+            category=CATEGORY_CONTENT_CONFLICT,
+            message=f"检测到相同内容的快照已成功导入过（时间: {duplicate_entry.get('timestamp', '?')}）",
+            details={"previous_import": duplicate_entry},
+            hint="若需重复导入请确认是否必要，skip 策略下通常无变化",
+        ))
+
+    _finalize_preflight()
+
     if dry_run:
         _simulate_import(snap_state, target_state, strategy, report)
         report.phase = "dry_run_complete"
         _append_ops_log(workspace, {
+            **_build_preflight_log(report, snapshot_path, strategy, include_config),
             "op": "import_dry_run",
-            "timestamp": datetime.now().isoformat(),
-            "snapshot_path": snapshot_path,
             "result": "success",
-            "conflicts_count": len(report.conflicts),
-            "warnings_count": sum(1 for c in report.conflicts if c.severity == "warning"),
-            "strategy": strategy,
+            "issues_imported": report.issues_imported,
+            "issues_skipped": report.issues_skipped,
+            "issues_overwritten": report.issues_overwritten,
+            "issues_renumbered": report.issues_renumbered,
+            "history_imported": report.history_imported,
+        })
+        return report
+
+    _append_ops_log(workspace, {
+        **_build_preflight_log(report, snapshot_path, strategy, include_config),
+        "result": "pending_confirm",
+    })
+
+    if report.preflight_conclusion == PREFLIGHT_ABORT:
+        report.phase = "aborted_preflight"
+        _append_ops_log(workspace, {
+            "op": "import",
+            "timestamp": datetime.now().isoformat(),
+            "import_id": report.import_id,
+            "snapshot_path": snapshot_path,
+            "phase": report.phase,
+            "preflight_conclusion": report.preflight_conclusion,
+            "result": "failure",
+            "failure_phase": "preflight",
+            "failure_reason": "aborted_by_preflight",
         })
         return report
 
@@ -662,6 +848,9 @@ def _do_import(workspace: str, snapshot_path: str,
     backup_path = _generate_backup_path(workspace, "pre_import")
     _backup_workspace(workspace, backup_path)
     report.backup_path = backup_path
+
+    original_target_state_dict = asdict(target_state)
+    original_target_config_dict = asdict(target_config) if target_config else None
 
     try:
         need_write_config = False
@@ -671,11 +860,17 @@ def _do_import(workspace: str, snapshot_path: str,
             need_write_config = True
 
         if need_write_config:
-            save_config(workspace, snap_config)
+            save_config_atomic(workspace, snap_config)
             report.config_updated = True
 
         _apply_import(snap_state, target_state, strategy, report)
-        save_state(workspace, target_state)
+
+        if strategy == "overwrite":
+            pass
+        else:
+            pass
+
+        save_state_atomic(workspace, target_state)
 
         report.success = True
         report.phase = "completed"
@@ -683,7 +878,11 @@ def _do_import(workspace: str, snapshot_path: str,
         _append_ops_log(workspace, {
             "op": "import",
             "timestamp": datetime.now().isoformat(),
+            "import_id": report.import_id,
             "snapshot_path": snapshot_path,
+            "phase": report.phase,
+            "preflight_conclusion": report.preflight_conclusion,
+            "conflict_summary": report.conflict_summary,
             "result": "success",
             "strategy": strategy,
             "include_config": include_config,
@@ -698,24 +897,45 @@ def _do_import(workspace: str, snapshot_path: str,
             "snapshot_version": snap_info.snapshot_version,
         })
     except Exception as e:
+        import traceback as _tb
+        err_traceback = _tb.format_exc()
+
         report.conflicts.append(ImportConflict(
             conflict_type="import_failed",
             severity="error",
+            category=CATEGORY_TARGET_INVALID,
             message=f"导入失败: {e}",
+            details={"traceback": err_traceback},
             hint="已从备份恢复，请检查错误信息后重试",
         ))
-        restore_from_backup(workspace, backup_path)
+
+        try:
+            if original_target_config_dict is not None:
+                cfg_obj = SurveyConfig.from_dict(original_target_config_dict)
+                save_config_atomic(workspace, cfg_obj)
+            state_obj = WorkspaceState.from_dict(original_target_state_dict)
+            save_state_atomic(workspace, state_obj)
+        except Exception:
+            restore_from_backup(workspace, backup_path)
+
         report.backup_path = backup_path
         report.success = False
         report.phase = "failed_rolled_back"
+        report.preflight_conclusion = PREFLIGHT_ABORT
+        report.conflict_summary = _compute_conflict_summary(report.conflicts)
 
         _append_ops_log(workspace, {
             "op": "import",
             "timestamp": datetime.now().isoformat(),
+            "import_id": report.import_id,
             "snapshot_path": snapshot_path,
+            "phase": report.phase,
+            "preflight_conclusion": report.preflight_conclusion,
+            "conflict_summary": report.conflict_summary,
             "result": "failure",
             "failure_phase": "executing",
             "failure_reason": str(e),
+            "failure_traceback": err_traceback,
             "backup_path": backup_path,
             "rolled_back": True,
         })
@@ -745,7 +965,24 @@ def _simulate_import(snap_state: WorkspaceState, target_state: WorkspaceState,
             else:
                 report.issues_renumbered += 1
 
-    report.history_imported = len(snap_state.review_history)
+    hist_count = 0
+    renumber_map = None
+    if strategy == "renumber":
+        renum_target = target_by_id.keys() & {i.id for i in snap_state.issues}
+        if renum_target:
+            renumber_map = {}
+            next_n = target_state.next_issue_number
+            for issue in snap_state.issues:
+                if issue.id in renum_target:
+                    renumber_map[issue.id] = f"ISS-{next_n:04d}"
+                    next_n += 1
+    for action in snap_state.review_history:
+        if strategy != "renumber" and _review_action_in_list(action, target_state.review_history):
+            continue
+        if strategy == "renumber" and renumber_map and _review_action_in_list(action, target_state.review_history, renumber_map):
+            continue
+        hist_count += 1
+    report.history_imported = hist_count
 
 
 def _apply_import(snap_state: WorkspaceState, target_state: WorkspaceState,
@@ -803,29 +1040,41 @@ def _apply_import(snap_state: WorkspaceState, target_state: WorkspaceState,
 
     target_state.next_issue_number = max(next_num, target_state.next_issue_number)
 
+    id_map = {old: new for old, new in renumbered_ids} if renumbered_ids else None
+    hist_imported = 0
     for action in snap_state.review_history:
+        if strategy != "renumber" and _review_action_in_list(action, target_state.review_history):
+            continue
+        if strategy == "renumber" and id_map and _review_action_in_list(action, target_state.review_history, id_map):
+            continue
         action_id = f"ACT-{len(target_state.review_history) + 1:04d}"
         new_action = _clone_review_action(action)
         new_action.action_id = action_id
 
         if strategy == "renumber" and renumbered_ids:
-            id_map = {old: new for old, new in renumbered_ids}
             if new_action.issue_id in id_map:
                 new_action.issue_id = id_map[new_action.issue_id]
 
         target_state.review_history.append(new_action)
+        hist_imported += 1
 
+    undo_imported = 0
     for batch in snap_state.undo_stack:
         new_batch = []
         for action in batch:
+            if strategy != "renumber" and _review_action_in_list(action, target_state.review_history):
+                continue
+            if strategy == "renumber" and id_map and _review_action_in_list(action, target_state.review_history, id_map):
+                continue
             new_action = _clone_review_action(action)
             new_action.action_id = f"ACT-{len(target_state.review_history) + 1 + len(new_batch):04d}"
             if strategy == "renumber" and renumbered_ids:
-                id_map = {old: new for old, new in renumbered_ids}
                 if new_action.issue_id in id_map:
                     new_action.issue_id = id_map[new_action.issue_id]
             new_batch.append(new_action)
-        target_state.undo_stack.append(new_batch)
+        if new_batch:
+            target_state.undo_stack.append(new_batch)
+            undo_imported += len(new_batch)
 
     if snap_state.scan_result and not target_state.scan_result:
         target_state.scan_result = snap_state.scan_result
@@ -840,7 +1089,7 @@ def _apply_import(snap_state: WorkspaceState, target_state: WorkspaceState,
     report.issues_skipped = len(skipped_ids)
     report.issues_overwritten = len(overwritten_ids)
     report.issues_renumbered = len(renumbered_ids)
-    report.history_imported = len(snap_state.review_history)
+    report.history_imported = hist_imported
 
 
 def _clone_issue(issue: Issue) -> Issue:
@@ -868,6 +1117,25 @@ def _clone_review_action(action: ReviewAction) -> ReviewAction:
         new_remark=action.new_remark,
         timestamp=action.timestamp,
     )
+
+
+def _review_action_semantic_equal(a: ReviewAction, b: ReviewAction,
+                                 issue_id_map: dict = None) -> bool:
+    """比较两个 ReviewAction 的语义等价性（忽略 action_id，可传 issue_id_map 做 renumber 映射）"""
+    a_issue_id = a.issue_id if issue_id_map is None else issue_id_map.get(a.issue_id, a.issue_id)
+    return (a_issue_id == b.issue_id
+            and a.old_status == b.old_status
+            and a.new_status == b.new_status
+            and a.old_remark == b.old_remark
+            and a.new_remark == b.new_remark
+            and a.timestamp == b.timestamp)
+
+
+def _review_action_in_list(action: ReviewAction,
+                           target_list: List[ReviewAction],
+                           issue_id_map: dict = None) -> bool:
+    return any(_review_action_semantic_equal(action, t, issue_id_map)
+               for t in target_list)
 
 
 def list_backups(workspace: str) -> List[str]:
