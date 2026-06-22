@@ -580,6 +580,259 @@ def test_snapshot_info_command():
         return True
 
 
+def test_import_to_empty_workspace_full_recovery():
+    """测试10：空工作区完整导入 - 配置+状态+历史全部恢复，立即可用"""
+    print("\n" + "=" * 60)
+    print("测试10：空工作区完整导入（核心回归）")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="empty_ws_") as tmp:
+        base = Path(tmp)
+
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0
+
+        r = run_cli(ws_src, "review", "ISS-0001", "--status", "pending", "--remark", "源备注A")
+        assert r.returncode == 0
+        r = run_cli(ws_src, "review", "ISS-0003", "--status", "accepted", "--remark", "源备注B")
+        assert r.returncode == 0
+
+        state_src = load_state(ws_src)
+        n_issues_src = len(state_src["issues"])
+        n_history_src = len(state_src["review_history"])
+
+        snap_path = base / "empty_test_snap.json"
+        r = run_cli(ws_src, "export", str(snap_path), "--note", "空工作区测试")
+        assert r.returncode == 0
+
+        ws_empty = base / "empty_ws"
+        ws_empty.mkdir()
+
+        assert not (ws_empty / ".survey_check").exists(), "测试前提：空工作区不应有 .survey_check"
+
+        r = run_cli(ws_empty, "import", str(snap_path), "--yes")
+        assert r.returncode == 0, f"import 失败: {r.stderr}"
+
+        assert (ws_empty / ".survey_check" / "survey_config.json").exists(), \
+            "导入后配置文件必须存在"
+        assert (ws_empty / ".survey_check" / "survey_state.json").exists(), \
+            "导入后状态文件必须存在"
+        print(f"  配置/状态文件均已生成 - OK")
+
+        config_empty = load_config(ws_empty)
+        config_src = load_config(ws_src)
+        assert_equal(config_empty["photo_exts"], config_src["photo_exts"],
+                     "导入后配置应与源一致")
+        assert_equal(config_empty["manifest_path"], config_src["manifest_path"],
+                     "导入后 manifest_path 应一致")
+        print(f"  配置内容与源一致 - OK")
+
+        state_empty = load_state(ws_empty)
+        assert_equal(len(state_empty["issues"]), n_issues_src,
+                     "导入后问题数应与源一致")
+        assert_equal(len(state_empty["review_history"]), n_history_src,
+                     "导入后复核历史数应与源一致")
+
+        iss1 = next(i for i in state_empty["issues"] if i["id"] == "ISS-0001")
+        assert_equal(iss1["status"], "pending", "ISS-0001 状态应保留")
+        assert_equal(iss1["remark"], "源备注A", "ISS-0001 备注应保留")
+        iss3 = next(i for i in state_empty["issues"] if i["id"] == "ISS-0003")
+        assert_equal(iss3["status"], "accepted", "ISS-0003 状态应保留")
+        assert_equal(iss3["remark"], "源备注B", "ISS-0003 备注应保留")
+        print(f"  问题状态和备注完整保留 - OK")
+
+        r = run_cli(ws_empty, "status")
+        assert r.returncode == 0, f"status 应能正常运行: {r.stderr}"
+        assert "问题总数" in r.stdout
+        print(f"  status 命令正常 - OK")
+
+        r = run_cli(ws_empty, "list")
+        assert r.returncode == 0, f"list 应能正常运行: {r.stderr}"
+        n_listed = sum(1 for l in r.stdout.splitlines() if l.startswith("[ISS-"))
+        assert_equal(n_listed, n_issues_src, "list 输出问题数应匹配")
+        print(f"  list 命令正常 ({n_listed} 个问题) - OK")
+
+        report_path = base / "empty_report.txt"
+        r = run_cli(ws_empty, "report", "-o", str(report_path))
+        assert r.returncode == 0, f"report 应能正常运行: {r.stderr}"
+        assert report_path.exists(), "报告文件应生成"
+        print(f"  report 命令正常 - OK")
+
+        r = run_cli(ws_empty, "review", "ISS-0005", "--status", "ignored",
+                    "--remark", "空工作区导入后新增复核")
+        assert r.returncode == 0, f"review 应能正常运行: {r.stderr}"
+        state_after = load_state(ws_empty)
+        assert_equal(len(state_after["review_history"]), n_history_src + 1,
+                     "导入后应能继续追加复核历史")
+        print(f"  可继续复核且历史连续 - OK")
+
+        print("  [PASS] 测试10通过")
+        return True
+
+
+def test_import_then_restart_continue_work():
+    """测试11：导入后"重启"再操作 - 历史不丢、能继续复核、重扫复用"""
+    print("\n" + "=" * 60)
+    print("测试11：导入后重启续跑")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="restart_test_") as tmp:
+        base = Path(tmp)
+
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0
+        r = run_cli(ws_src, "review", "ISS-0001", "--status", "pending", "--remark", "重启前")
+        assert r.returncode == 0
+
+        snap_path = base / "restart_snap.json"
+        r = run_cli(ws_src, "export", str(snap_path))
+        assert r.returncode == 0
+
+        ws_new = base / "new_ws"
+        ws_new.mkdir()
+        r = run_cli(ws_new, "import", str(snap_path), "--yes")
+        assert r.returncode == 0
+
+        state_after_import = load_state(ws_new)
+        history_after_import = len(state_after_import["review_history"])
+        undo_after_import = len(state_after_import["undo_stack"])
+        print(f"  导入后: 历史 {history_after_import} 条, 撤销栈 {undo_after_import} 步")
+
+        r = run_cli(ws_new, "review", "ISS-0002", "--status", "accepted", "--remark", "重启后第1次")
+        assert r.returncode == 0
+        r = run_cli(ws_new, "review", "ISS-0003", "--status", "ignored", "--remark", "重启后第2次")
+        assert r.returncode == 0
+
+        state_after_reviews = load_state(ws_new)
+        history_after_reviews = len(state_after_reviews["review_history"])
+        assert_equal(history_after_reviews, history_after_import + 2,
+                     "重启后追加复核应正确累加")
+        print(f"  追加复核后历史: {history_after_reviews} 条 - OK")
+
+        r = run_cli(ws_new, "undo")
+        assert r.returncode == 0
+        assert "已撤销" in r.stdout
+
+        state_after_undo = load_state(ws_new)
+        history_after_undo = len(state_after_undo["review_history"])
+        assert_equal(history_after_undo, history_after_reviews + 1,
+                     "撤销应追加撤销记录")
+        print(f"  撤销功能正常 - OK")
+
+        r = run_cli(ws_new, "scan")
+        assert r.returncode == 0
+        assert "复用历史问题" in r.stdout
+        print(f"  重扫能复用历史问题 - OK")
+
+        state_final = load_state(ws_new)
+        iss1 = next(i for i in state_final["issues"] if i["id"] == "ISS-0001")
+        assert_equal(iss1["status"], "pending", "重扫后历史状态不应丢失")
+        assert_equal(iss1["remark"], "重启前", "重扫后历史备注不应丢失")
+        print(f"  重扫后历史状态和备注完整保留 - OK")
+
+        print("  [PASS] 测试11通过")
+        return True
+
+
+def test_import_to_partial_residue_workspace():
+    """测试12：目标工作区有残留状态但无配置 - 保护与恢复行为"""
+    print("\n" + "=" * 60)
+    print("测试12：目标目录残留状态无配置的保护行为")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="residue_test_") as tmp:
+        base = Path(tmp)
+
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0
+        r = run_cli(ws_src, "review", "ISS-0001", "--status", "accepted", "--remark", "源")
+        assert r.returncode == 0
+
+        snap_path = base / "res_snap.json"
+        r = run_cli(ws_src, "export", str(snap_path))
+        assert r.returncode == 0
+
+        ws_res = base / "residue_ws"
+        ws_res.mkdir()
+        state_dir = ws_res / ".survey_check"
+        state_dir.mkdir()
+
+        fake_state = {
+            "state_version": "1.0",
+            "created_at": "2020-01-01T00:00:00",
+            "last_scan_time": None,
+            "scan_result": None,
+            "survey_points": [],
+            "issues": [
+                {
+                    "id": "ISS-0001",
+                    "issue_type": "missing",
+                    "status": "open",
+                    "description": "假数据",
+                    "file_type": "photo",
+                    "point_id": "P999",
+                    "file_paths": [],
+                    "remark": "残留数据",
+                    "created_at": "2020-01-01T00:00:00",
+                    "updated_at": "2020-01-01T00:00:00",
+                }
+            ],
+            "review_history": [],
+            "undo_stack": [],
+            "next_issue_number": 2,
+        }
+        with open(state_dir / "survey_state.json", "w", encoding="utf-8") as f:
+            json.dump(fake_state, f, ensure_ascii=False, indent=2)
+
+        assert (state_dir / "survey_state.json").exists()
+        assert not (state_dir / "survey_config.json").exists()
+        print(f"  残留场景: 有状态无配置 - 已构建")
+
+        r = run_cli(ws_res, "import", str(snap_path), "--dry-run")
+        assert r.returncode == 0
+        assert "无配置" in r.stdout or "no_target_config" in r.stdout
+        assert "编号冲突" in r.stdout or "issue_id_conflict" in r.stdout
+        print(f"  dry-run 检测到无配置 + 编号冲突 - OK")
+
+        r = run_cli(ws_res, "import", str(snap_path), "--strategy", "skip", "--yes")
+        assert r.returncode == 0
+
+        backup_path_str = None
+        for line in r.stdout.splitlines():
+            if "备份已保存至" in line:
+                backup_path_str = line.split("备份已保存至:")[1].strip()
+                break
+        assert backup_path_str, "导入应有备份路径提示"
+        backup_path = Path(backup_path_str)
+        assert backup_path.exists(), "备份目录应存在"
+        assert (backup_path / "survey_state.json").exists(), "备份应包含状态文件"
+        print(f"  残留状态已自动备份 - OK")
+
+        config_res = load_config(ws_res)
+        config_src = load_config(ws_src)
+        assert_equal(config_res["photo_exts"], config_src["photo_exts"],
+                     "残留工作区导入后配置应从快照恢复")
+        print(f"  配置已从快照恢复 - OK")
+
+        state_res = load_state(ws_res)
+        iss1 = next(i for i in state_res["issues"] if i["id"] == "ISS-0001")
+        assert_equal(iss1["status"], "open",
+                     "skip策略下，残留问题应保留（目标版本）")
+        assert_equal(iss1["remark"], "残留数据",
+                     "skip策略下，残留备注应保留")
+        print(f"  skip策略保留目标残留问题 - OK")
+
+        r = run_cli(ws_res, "status")
+        assert r.returncode == 0
+        print(f"  status 命令在残留导入后正常 - OK")
+
+        print("  [PASS] 测试12通过")
+        return True
+
+
 def main():
     print("快照导出/导入功能 - 回归测试")
     print(f"工作目录: {SCRIPT_DIR}")
@@ -595,6 +848,9 @@ def main():
         test_restart_resume,
         test_report_list_status_consistency,
         test_snapshot_info_command,
+        test_import_to_empty_workspace_full_recovery,
+        test_import_then_restart_continue_work,
+        test_import_to_partial_residue_workspace,
     ]
 
     passed = 0

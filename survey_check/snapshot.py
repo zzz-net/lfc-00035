@@ -296,8 +296,8 @@ def _do_import(workspace: str, snapshot_path: str,
     if target_config is None:
         report.conflicts.append(ImportConflict(
             conflict_type="no_target_config",
-            severity="warning",
-            message="目标工作区没有配置，将使用快照配置",
+            severity="info",
+            message="目标工作区无配置，将从快照恢复配置",
         ))
     elif config_diffs:
         diff_desc = "; ".join(f"{k}" for k, _, _ in config_diffs)
@@ -337,7 +337,13 @@ def _do_import(workspace: str, snapshot_path: str,
     report.backup_path = backup_path
 
     try:
-        if include_config and config_diffs:
+        need_write_config = False
+        if target_config is None:
+            need_write_config = True
+        elif include_config and config_diffs:
+            need_write_config = True
+
+        if need_write_config:
             save_config(workspace, snap_config)
             report.config_updated = True
 

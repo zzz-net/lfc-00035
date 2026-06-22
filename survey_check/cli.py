@@ -553,6 +553,14 @@ def _print_import_report(report: ImportReport) -> None:
         click.echo(f"备份已保存至: {report.backup_path}")
         click.echo(f"如需回退，可运行: survey-check backup-restore <备份名>")
 
+    if not report.dry_run and report.success and not report.has_errors:
+        click.echo("")
+        click.echo("[完成] 快照导入成功，可继续使用以下命令复核:")
+        click.echo("  survey-check status    查看工作区状态")
+        click.echo("  survey-check list      列出全部问题")
+        click.echo("  survey-check report    生成复核报告")
+        click.echo("  survey-check review    复核问题")
+
 
 def _status_label(status):
     labels = {
