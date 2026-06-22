@@ -631,7 +631,10 @@ def test_import_to_empty_workspace_full_recovery():
         assert r.returncode == 0
 
         ws_empty = base / "empty_ws"
-        ws_empty.mkdir()
+        shutil.copytree(SAMPLE_DATA, ws_empty)
+        state_dir_empty = ws_empty / ".survey_check"
+        if state_dir_empty.exists():
+            shutil.rmtree(state_dir_empty)
 
         assert not (ws_empty / ".survey_check").exists(), "测试前提：空工作区不应有 .survey_check"
 
@@ -648,9 +651,13 @@ def test_import_to_empty_workspace_full_recovery():
         config_src = load_config(ws_src)
         assert_equal(config_empty["photo_exts"], config_src["photo_exts"],
                      "导入后配置应与源一致")
-        assert_equal(config_empty["manifest_path"], config_src["manifest_path"],
-                     "导入后 manifest_path 应一致")
-        print(f"  配置内容与源一致 - OK")
+        for key in ("manifest_path", "photo_dir", "track_dir", "table_dir"):
+            assert Path(config_empty[key]).is_absolute(), f"导入后 {key} 应为绝对路径"
+            assert str(ws_empty) in config_empty[key], \
+                f"导入后 {key} 应位于目标工作区 {ws_empty} 下，实际 {config_empty[key]}"
+        path_info = {k: config_empty[k] for k in ("manifest_path", "photo_dir", "track_dir", "table_dir")}
+        print(f"  路径已重映射至目标工作区: {path_info}")
+        print(f"  配置非路径字段与源一致 - OK")
 
         state_empty = load_state(ws_empty)
         assert_equal(len(state_empty["issues"]), n_issues_src,
@@ -715,7 +722,10 @@ def test_import_then_restart_continue_work():
         assert r.returncode == 0
 
         ws_new = base / "new_ws"
-        ws_new.mkdir()
+        shutil.copytree(SAMPLE_DATA, ws_new)
+        state_dir_new = ws_new / ".survey_check"
+        if state_dir_new.exists():
+            shutil.rmtree(state_dir_new)
         r = run_cli(ws_new, "import", str(snap_path), "--yes")
         assert r.returncode == 0
 
@@ -1149,7 +1159,10 @@ def test_cross_restart_validation():
         assert r.returncode == 0
 
         ws_new = base / "new_ws"
-        ws_new.mkdir()
+        shutil.copytree(SAMPLE_DATA, ws_new)
+        state_dir_new = ws_new / ".survey_check"
+        if state_dir_new.exists():
+            shutil.rmtree(state_dir_new)
         r = run_cli(ws_new, "import", str(snap_path), "--yes")
         assert r.returncode == 0
         print(f"  导入完成")

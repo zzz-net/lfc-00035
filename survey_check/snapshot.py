@@ -462,6 +462,48 @@ def load_snapshot(snapshot_path: str) -> Tuple[SnapshotInfo, SurveyConfig, Works
     return info, config, state
 
 
+def _remap_single_path(source_path: str, source_workspace: str,
+                       target_workspace: str, default_basename: str) -> str:
+    """将单个源路径重映射到目标工作区内。
+
+    策略：
+    - 空路径：返回默认值（基于 target_workspace + default_basename）
+    - 相对路径：以 target_workspace 为基准转为绝对路径
+    - 绝对路径且位于 source_workspace 内：保持相对结构，重放到 target_workspace
+    - 绝对路径但位于 source_workspace 之外：仅取 basename，放到 target_workspace 下
+    """
+    if not source_path:
+        return os.path.abspath(os.path.join(target_workspace, default_basename))
+
+    if not os.path.isabs(source_path):
+        return os.path.abspath(os.path.join(target_workspace, source_path))
+
+    try:
+        rel = os.path.relpath(source_path, source_workspace)
+    except ValueError:
+        rel = None
+
+    if rel and not rel.startswith("..") and not os.path.isabs(rel):
+        return os.path.abspath(os.path.join(target_workspace, rel))
+
+    return os.path.abspath(os.path.join(target_workspace, os.path.basename(source_path)))
+
+
+def _remap_config_paths(snap_config: SurveyConfig, source_workspace: str,
+                        target_workspace: str) -> SurveyConfig:
+    """返回一个新的 SurveyConfig，其中 4 个路径字段已重映射到 target_workspace。"""
+    new_cfg = SurveyConfig.from_dict(asdict(snap_config))
+    new_cfg.manifest_path = _remap_single_path(
+        snap_config.manifest_path, source_workspace, target_workspace, "manifest.csv")
+    new_cfg.photo_dir = _remap_single_path(
+        snap_config.photo_dir, source_workspace, target_workspace, "photos")
+    new_cfg.track_dir = _remap_single_path(
+        snap_config.track_dir, source_workspace, target_workspace, "tracks")
+    new_cfg.table_dir = _remap_single_path(
+        snap_config.table_dir, source_workspace, target_workspace, "tables")
+    return new_cfg
+
+
 def _compare_configs(snap_config: SurveyConfig, target_config: SurveyConfig) -> List[Tuple[str, Any, Any]]:
     diffs = []
     compare_fields = [
@@ -661,6 +703,8 @@ def _do_import(workspace: str, snapshot_path: str,
     try:
         snap_info, snap_config, snap_state = load_snapshot(snapshot_path)
         report.snapshot_info = snap_info
+        source_ws = snap_info.source_workspace or workspace
+        remapped_config = _remap_config_paths(snap_config, source_ws, workspace)
     except Exception as e:
         report.conflicts.append(ImportConflict(
             conflict_type="snapshot_parse_error",
@@ -742,15 +786,23 @@ def _do_import(workspace: str, snapshot_path: str,
     else:
         target_cat = CATEGORY_CONFIG_MISSING
 
-    config_diffs = _compare_configs(snap_config, target_config) if target_config else []
+    config_diffs = _compare_configs(remapped_config, target_config) if target_config else []
+
+    path_remap_info = {
+        "manifest_path": (snap_config.manifest_path, remapped_config.manifest_path),
+        "photo_dir": (snap_config.photo_dir, remapped_config.photo_dir),
+        "track_dir": (snap_config.track_dir, remapped_config.track_dir),
+        "table_dir": (snap_config.table_dir, remapped_config.table_dir),
+    }
 
     if target_config is None:
         report.conflicts.append(ImportConflict(
             conflict_type="no_target_config",
             severity="info",
             category=target_cat,
-            message="目标工作区无配置，将从快照恢复配置",
-            hint="导入将自动恢复配置，无需额外操作",
+            message="目标工作区无配置，将从快照恢复配置（路径已重映射至目标工作区）",
+            details={"path_remap": path_remap_info},
+            hint="导入将自动恢复并重映射路径，无需额外操作",
         ))
     elif config_diffs:
         diff_desc = "; ".join(f"{k}" for k, _, _ in config_diffs)
@@ -758,9 +810,9 @@ def _do_import(workspace: str, snapshot_path: str,
             conflict_type="config_mismatch",
             severity="warning",
             category=CATEGORY_CONTENT_CONFLICT,
-            message=f"配置不一致（{len(config_diffs)} 处差异: {diff_desc}）",
-            details={"diffs": config_diffs},
-            hint="使用 --include-config 可覆盖目标配置，否则保留当前配置",
+            message=f"配置不一致（{len(config_diffs)} 处差异: {diff_desc}），导入时路径将重映射至目标工作区",
+            details={"diffs": config_diffs, "path_remap": path_remap_info},
+            hint="使用 --include-config 可覆盖目标配置（路径已自动重映射），否则保留当前配置",
         ))
 
     if target_state.last_scan_time and snap_state.last_scan_time:
@@ -860,8 +912,11 @@ def _do_import(workspace: str, snapshot_path: str,
             need_write_config = True
 
         if need_write_config:
-            save_config_atomic(workspace, snap_config)
+            save_config_atomic(workspace, remapped_config)
             report.config_updated = True
+
+        if os.environ.get("SURVEY_CHECK_TEST_INJECT_ABORT_AFTER_CONFIG"):
+            raise RuntimeError("测试注入: 配置已写、状态未写时模拟失败")
 
         _apply_import(snap_state, target_state, strategy, report)
 
@@ -895,6 +950,8 @@ def _do_import(workspace: str, snapshot_path: str,
             "backup_path": backup_path,
             "content_hash": snap_info.content_hash,
             "snapshot_version": snap_info.snapshot_version,
+            "path_remap": path_remap_info if report.config_updated else None,
+            "source_workspace": snap_info.source_workspace,
         })
     except Exception as e:
         import traceback as _tb
