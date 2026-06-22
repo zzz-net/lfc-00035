@@ -761,9 +761,9 @@ def test_import_then_restart_continue_work():
 
 
 def test_import_to_partial_residue_workspace():
-    """测试12：目标工作区有残留状态但无配置 - 保护与恢复行为"""
+    """测试12：残留状态无配置应阻止导入；干净工作区仍可成功导入"""
     print("\n" + "=" * 60)
-    print("测试12：目标目录残留状态无配置的保护行为")
+    print("测试12：残留状态保护与干净工作区导入")
     print("=" * 60)
 
     with tempfile.TemporaryDirectory(prefix="residue_test_") as tmp:
@@ -779,6 +779,7 @@ def test_import_to_partial_residue_workspace():
         r = run_cli(ws_src, "export", str(snap_path))
         assert r.returncode == 0
 
+        # ========== 场景1：残留状态无配置 → 应失败且不写入新配置 ==========
         ws_res = base / "residue_ws"
         ws_res.mkdir()
         state_dir = ws_res / ".survey_check"
@@ -813,45 +814,51 @@ def test_import_to_partial_residue_workspace():
 
         assert (state_dir / "survey_state.json").exists()
         assert not (state_dir / "survey_config.json").exists()
-        print(f"  残留场景: 有状态无配置 - 已构建")
+        print(f"  场景1: 残留状态无配置 - 已构建")
 
         r = run_cli(ws_res, "import", str(snap_path), "--dry-run")
-        assert r.returncode == 0
-        assert "无配置" in r.stdout or "no_target_config" in r.stdout or "残留" in r.stdout
-        assert "编号冲突" in r.stdout or "issue_id_conflict" in r.stdout
-        print(f"  dry-run 检测到无配置/残留 + 编号冲突 - OK")
+        assert r.returncode != 0, "残留状态无配置时 dry-run 也应失败"
+        assert "残留" in r.stdout, "输出应包含'残留'关键词"
+        assert "residual_state_no_config" in r.stdout, "输出应包含冲突类型"
+        assert "诊断" in r.stdout or "建议" in r.stdout, "应有处理提示"
+        print(f"  残留场景 dry-run 被正确拦截 - OK")
 
         r = run_cli(ws_res, "import", str(snap_path), "--strategy", "skip", "--yes")
-        assert r.returncode == 0
+        assert r.returncode != 0, "残留状态无配置时导回应失败"
+        assert "残留" in r.stdout
+        assert "删除 .survey_check/ 目录" in r.stdout or "init" in r.stdout
+        assert not (state_dir / "survey_config.json").exists(), "失败后不应写入新配置"
+        print(f"  残留场景导入被正确拦截且未写配置 - OK")
 
-        backup_path_str = None
-        for line in r.stdout.splitlines():
-            if "备份已保存至" in line:
-                backup_path_str = line.split("备份已保存至:")[1].strip()
-                break
-        assert backup_path_str, "导入应有备份路径提示"
-        backup_path = Path(backup_path_str)
-        assert backup_path.exists(), "备份目录应存在"
-        assert (backup_path / "survey_state.json").exists(), "备份应包含状态文件"
-        print(f"  残留状态已自动备份 - OK")
+        with open(state_dir / "survey_state.json", "r", encoding="utf-8") as f:
+            state_after = json.load(f)
+        assert_equal(state_after["issues"][0]["remark"], "残留数据",
+                     "失败后残留状态文件不应被修改")
+        print(f"  失败后残留状态文件保持原样 - OK")
 
-        config_res = load_config(ws_res)
+        # ========== 场景2：干净工作区（无状态无配置）→ 应成功 ==========
+        ws_clean = base / "clean_ws"
+        ws_clean.mkdir()
+        assert not (ws_clean / ".survey_check").exists()
+        print(f"  场景2: 干净工作区 - 已构建")
+
+        r = run_cli(ws_clean, "import", str(snap_path), "--strategy", "skip", "--yes")
+        assert r.returncode == 0, "干净工作区导入应成功"
+        assert (ws_clean / ".survey_check" / "survey_config.json").exists()
+        assert (ws_clean / ".survey_check" / "survey_state.json").exists()
+        print(f"  干净工作区导入成功 - OK")
+
+        config_clean = load_config(ws_clean)
         config_src = load_config(ws_src)
-        assert_equal(config_res["photo_exts"], config_src["photo_exts"],
-                     "残留工作区导入后配置应从快照恢复")
-        print(f"  配置已从快照恢复 - OK")
+        assert_equal(config_clean["photo_exts"], config_src["photo_exts"],
+                     "干净工作区导入后配置应从快照恢复")
+        print(f"  干净工作区配置恢复正确 - OK")
 
-        state_res = load_state(ws_res)
-        iss1 = next(i for i in state_res["issues"] if i["id"] == "ISS-0001")
-        assert_equal(iss1["status"], "open",
-                     "skip策略下，残留问题应保留（目标版本）")
-        assert_equal(iss1["remark"], "残留数据",
-                     "skip策略下，残留备注应保留")
-        print(f"  skip策略保留目标残留问题 - OK")
-
-        r = run_cli(ws_res, "status")
-        assert r.returncode == 0
-        print(f"  status 命令在残留导入后正常 - OK")
+        state_clean = load_state(ws_clean)
+        iss1 = next(i for i in state_clean["issues"] if i["id"] == "ISS-0001")
+        assert_equal(iss1["remark"], "源",
+                     "干净工作区导入后问题备注应来自快照")
+        print(f"  干净工作区状态恢复正确 - OK")
 
         print("  [PASS] 测试12通过")
         return True
@@ -1315,6 +1322,87 @@ def test_ops_log_cli_command():
         return True
 
 
+def test_import_cross_restart_status_consistency():
+    """测试20：导回后跨重启运行 status/list/report 结果一致，历史备注不丢失"""
+    print("\n" + "=" * 60)
+    print("测试20：导回后跨重启命令一致性验证")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="xrestart_") as tmp:
+        base = Path(tmp)
+
+        # 源工作区：扫描 + review 留备注
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0, f"scan失败: {r.stderr}"
+        r = run_cli(ws_src, "review", "ISS-0001", "--status", "accepted",
+                    "--remark", "第一次审批")
+        assert r.returncode == 0, f"review1失败: {r.stderr}, stdout: {r.stdout}"
+        r = run_cli(ws_src, "review", "ISS-0002", "--status", "ignored",
+                    "--remark", "驳回处理")
+        assert r.returncode == 0, f"review2失败: {r.stderr}, stdout: {r.stdout}"
+
+        snap_path = base / "xrestart_snap.json"
+        r = run_cli(ws_src, "export", str(snap_path))
+        assert r.returncode == 0, f"export失败: {r.stderr}"
+
+        # 目标工作区：干净目录，直接导回
+        ws_dst = base / "dst"
+        ws_dst.mkdir()
+        r = run_cli(ws_dst, "import", str(snap_path), "--yes")
+        assert r.returncode == 0, f"import失败: {r.stdout}\nstderr: {r.stderr}"
+
+        # 记录"重启"前的基准输出
+        r_status_before = run_cli(ws_dst, "status")
+        assert r_status_before.returncode == 0, f"导入后status失败: {r_status_before.stderr}"
+        assert "问题总数" in r_status_before.stdout, "status输出应包含问题总数"
+
+        r_list_before = run_cli(ws_dst, "list")
+        assert r_list_before.returncode == 0
+        list_count_before = sum(1 for l in r_list_before.stdout.splitlines() if l.startswith("[ISS-"))
+
+        r_report_before = run_cli(ws_dst, "report", "-o", str(base / "report_before.txt"))
+        assert r_report_before.returncode == 0
+        assert (base / "report_before.txt").exists()
+
+        # ========== 模拟 3 次"重启"：每次都是独立的子进程调用 ==========
+        for restart_round in range(1, 4):
+            print(f"  第 {restart_round} 轮重启验证...")
+
+            r_status = run_cli(ws_dst, "status")
+            assert r_status.returncode == 0, f"第 {restart_round} 轮 status 失败"
+
+            r_list = run_cli(ws_dst, "list")
+            assert r_list.returncode == 0, f"第 {restart_round} 轮 list 失败"
+            assert "ISS-0001" in r_list.stdout
+            assert "ISS-0002" in r_list.stdout
+            list_count = sum(1 for l in r_list.stdout.splitlines() if l.startswith("[ISS-"))
+            assert_equal(list_count, list_count_before, f"第 {restart_round} 轮 list 问题数应一致")
+
+            assert "第一次审批" in r_list.stdout, f"第 {restart_round} 轮 ISS-0001 备注丢失"
+            assert "驳回处理" in r_list.stdout, f"第 {restart_round} 轮 ISS-0002 备注丢失"
+
+            r_report = run_cli(ws_dst, "report", "-o", str(base / f"report_{restart_round}.txt"))
+            assert r_report.returncode == 0, f"第 {restart_round} 轮 report 失败"
+            assert (base / f"report_{restart_round}.txt").exists()
+
+            print(f"  第 {restart_round} 轮全部通过 - OK (问题数: {list_count})")
+
+        # 验证重启前后状态完全一致
+        state_final = load_state(ws_dst)
+        iss1_final = next(i for i in state_final["issues"] if i["id"] == "ISS-0001")
+        assert_equal(iss1_final["remark"], "第一次审批", "多轮重启后 ISS-0001 备注不应丢失")
+        iss2_final = next(i for i in state_final["issues"] if i["id"] == "ISS-0002")
+        assert_equal(iss2_final["remark"], "驳回处理", "多轮重启后 ISS-0002 备注不应丢失")
+
+        history_count = len(state_final["review_history"])
+        assert history_count >= 2, "评审历史不应丢失"
+        print(f"  多轮重启后状态/历史/备注全部一致 - OK (历史记录: {history_count} 条)")
+
+        print("  [PASS] 测试20通过")
+        return True
+
+
 def main():
     print("快照导出/导入功能 - 回归测试")
     print(f"工作目录: {SCRIPT_DIR}")
@@ -1340,6 +1428,7 @@ def main():
         test_cross_restart_validation,
         test_ops_log,
         test_ops_log_cli_command,
+        test_import_cross_restart_status_consistency,
     ]
 
     passed = 0

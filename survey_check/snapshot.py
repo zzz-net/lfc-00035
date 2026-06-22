@@ -233,9 +233,9 @@ def _detect_residual_conflicts(workspace: str) -> List[ImportConflict]:
     if has_state and not has_config:
         conflicts.append(ImportConflict(
             conflict_type="residual_state_no_config",
-            severity="warning",
-            message="目标目录存在状态文件但缺少配置文件（残留状态）",
-            hint="导入将从快照恢复配置；如不确定残留来源，可先运行 'survey-check init' 初始化",
+            severity="error",
+            message="目标目录存在状态文件但缺少配置文件（残留状态），可能是不完整的旧工作区",
+            hint="请先手动清理残留状态文件（删除 .survey_check/ 目录），或先运行 'survey-check init' 初始化后再导入",
         ))
 
     if not has_state and has_config:
@@ -587,6 +587,17 @@ def _do_import(workspace: str, snapshot_path: str,
 
     residual_conflicts = _detect_residual_conflicts(workspace)
     report.conflicts.extend(residual_conflicts)
+    if report.has_errors:
+        _append_ops_log(workspace, {
+            "op": "import",
+            "timestamp": datetime.now().isoformat(),
+            "snapshot_path": snapshot_path,
+            "result": "failure",
+            "failure_phase": "target_validation",
+            "failure_reason": "residual_conflict",
+            "conflicts": [c.conflict_type for c in residual_conflicts],
+        })
+        return report
 
     report.phase = "content_check"
     target_config = load_config(workspace) if os.path.exists(get_config_path(workspace)) else None
