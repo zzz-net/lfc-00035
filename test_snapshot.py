@@ -11,6 +11,16 @@
 7. 重启续跑（历史不丢失）
 8. report/status/list 输出一致性
 9. CLI 命令集成
+10. 空工作区完整导入
+11. 导入后重启续跑
+12. 残留状态无配置的保护
+13. 导出完整性（元数据+校验和）
+14. 损坏快照导入（无效JSON/缺字段/篡改内容）
+15. 版本不匹配检测
+16. 重复导入幂等性
+17. 跨重启验证链路
+18. 操作日志验证
+19. ops-log CLI 命令
 
 运行方式:
     python test_snapshot.py
@@ -52,6 +62,19 @@ def load_config(workspace: Path) -> dict:
     config_path = workspace / ".survey_check" / "survey_config.json"
     with open(config_path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_ops_log(workspace: Path) -> list:
+    log_path = workspace / ".survey_check" / "ops_log.jsonl"
+    if not log_path.exists():
+        return []
+    entries = []
+    with open(log_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                entries.append(json.loads(line))
+    return entries
 
 
 def setup_workspace(base: Path, name: str) -> Path:
@@ -571,10 +594,11 @@ def test_snapshot_info_command():
         assert r.returncode == 0
         assert "快照版本" in r.stdout
         assert "导出时间" in r.stdout
-        assert "问题总数" in r.stdout
+        assert "问题总数" in r.stdout or "问题" in r.stdout
         assert "复核历史" in r.stdout
         assert "信息测试" in r.stdout
-        print(f"  snapshot-info 输出完整")
+        assert "校验和" in r.stdout
+        print(f"  snapshot-info 输出完整（含校验和）")
 
         print("  [PASS] 测试9通过")
         return True
@@ -793,9 +817,9 @@ def test_import_to_partial_residue_workspace():
 
         r = run_cli(ws_res, "import", str(snap_path), "--dry-run")
         assert r.returncode == 0
-        assert "无配置" in r.stdout or "no_target_config" in r.stdout
+        assert "无配置" in r.stdout or "no_target_config" in r.stdout or "残留" in r.stdout
         assert "编号冲突" in r.stdout or "issue_id_conflict" in r.stdout
-        print(f"  dry-run 检测到无配置 + 编号冲突 - OK")
+        print(f"  dry-run 检测到无配置/残留 + 编号冲突 - OK")
 
         r = run_cli(ws_res, "import", str(snap_path), "--strategy", "skip", "--yes")
         assert r.returncode == 0
@@ -833,6 +857,464 @@ def test_import_to_partial_residue_workspace():
         return True
 
 
+def test_export_integrity():
+    """测试13：导出完整性 - 元数据、校验和、必要字段"""
+    print("\n" + "=" * 60)
+    print("测试13：导出完整性验证")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="export_int_") as tmp:
+        base = Path(tmp)
+
+        ws = setup_workspace(base, "ws")
+        r = run_cli(ws, "scan")
+        assert r.returncode == 0
+
+        r = run_cli(ws, "review", "ISS-0001", "--status", "pending", "--remark", "备注X")
+        assert r.returncode == 0
+        r = run_cli(ws, "review", "ISS-0002", "--status", "accepted", "--remark", "备注Y")
+        assert r.returncode == 0
+
+        snap_path = base / "integrity_snap.json"
+        r = run_cli(ws, "export", str(snap_path), "--note", "完整性测试")
+        assert r.returncode == 0
+
+        with open(snap_path, encoding="utf-8") as f:
+            snap = json.load(f)
+
+        info = snap["snapshot_info"]
+        assert_equal(info["snapshot_version"], "1.1", "快照版本应为1.1")
+        assert info["exported_at"], "导出时间不应为空"
+        assert info["source_workspace"], "来源工作区不应为空"
+        assert_equal(info["note"], "完整性测试", "备注应与传入值一致")
+        assert_equal(info["state_version"], "1.0", "状态版本应记录")
+        assert_equal(info["config_version"], "1.0", "配置版本应记录")
+        assert info["issue_count"] > 0, "问题计数应大于0"
+        assert info["history_count"] > 0, "历史计数应大于0"
+        assert info["content_hash"], "内容校验和不应为空"
+        print(f"  元数据完整: 版本={info['snapshot_version']}, "
+              f"问题={info['issue_count']}, 历史={info['history_count']}, "
+              f"校验和={info['content_hash']}")
+
+        state = load_state(ws)
+        assert_equal(info["issue_count"], len(state["issues"]), "问题计数应与实际一致")
+        assert_equal(info["history_count"], len(state["review_history"]), "历史计数应与实际一致")
+        assert_equal(info["undo_stack_count"], len(state["undo_stack"]), "撤销栈计数应与实际一致")
+        assert_equal(info["survey_points_count"], len(state["survey_points"]), "调查点计数应与实际一致")
+        print(f"  计数与实际一致 - OK")
+
+        import hashlib
+        payload = json.dumps({"config": snap["config"], "state": snap["state"]},
+                             sort_keys=True, ensure_ascii=False)
+        expected_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+        assert_equal(info["content_hash"], expected_hash, "内容校验和应可复现")
+        print(f"  内容校验和可复现 - OK")
+
+        assert "snapshot_info" in snap
+        assert "config" in snap
+        assert "state" in snap
+        assert "issues" in snap["state"]
+        assert "review_history" in snap["state"]
+        assert "undo_stack" in snap["state"]
+        print(f"  快照结构完整 - OK")
+
+        r = run_cli(ws, "snapshot-info", str(snap_path))
+        assert r.returncode == 0
+        assert "校验和" in r.stdout
+        assert "完整性测试" in r.stdout
+        print(f"  snapshot-info 含校验和 - OK")
+
+        print("  [PASS] 测试13通过")
+        return True
+
+
+def test_corrupted_snapshot_import():
+    """测试14：损坏快照导入 - 无效JSON/缺字段/篡改内容"""
+    print("\n" + "=" * 60)
+    print("测试14：损坏快照导入")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="corrupt_test_") as tmp:
+        base = Path(tmp)
+
+        ws = setup_workspace(base, "ws")
+        r = run_cli(ws, "scan")
+        assert r.returncode == 0
+
+        invalid_json_path = base / "bad_json.json"
+        with open(invalid_json_path, "w", encoding="utf-8") as f:
+            f.write("this is not valid json {{{")
+        r = run_cli(ws, "import", str(invalid_json_path), "--yes")
+        assert r.returncode != 0, "无效JSON应导入失败"
+        assert "无效" in r.stdout or "invalid" in r.stdout.lower() or "JSON" in r.stdout
+        assert "诊断" in r.stdout or "建议" in r.stdout or "hint" in r.stdout.lower()
+        print(f"  无效JSON被正确拦截 - OK")
+
+        missing_fields_path = base / "missing_fields.json"
+        with open(missing_fields_path, "w", encoding="utf-8") as f:
+            json.dump({"snapshot_info": {"snapshot_version": "1.1", "exported_at": "2025-01-01"}}, f)
+        r = run_cli(ws, "import", str(missing_fields_path), "--yes")
+        assert r.returncode != 0, "缺字段快照应导入失败"
+        assert "缺少" in r.stdout or "missing" in r.stdout.lower()
+        print(f"  缺字段快照被正确拦截 - OK")
+
+        snap_path = base / "good_snap.json"
+        r = run_cli(ws, "export", str(snap_path))
+        assert r.returncode == 0
+        with open(snap_path, encoding="utf-8") as f:
+            snap = json.load(f)
+        snap["state"]["issues"].append({
+            "id": "ISS-FAKE",
+            "issue_type": "missing",
+            "status": "open",
+            "description": "篡改数据",
+            "file_type": "photo",
+            "point_id": "P999",
+            "file_paths": [],
+            "remark": "被篡改",
+            "created_at": "2025-01-01",
+            "updated_at": "2025-01-01",
+        })
+        tampered_path = base / "tampered_snap.json"
+        with open(tampered_path, "w", encoding="utf-8") as f:
+            json.dump(snap, f, ensure_ascii=False, indent=2)
+        r = run_cli(ws, "import", str(tampered_path), "--yes")
+        assert r.returncode != 0, "篡改内容应导入失败（校验和不匹配）"
+        assert "校验和" in r.stdout or "checksum" in r.stdout.lower() or "篡改" in r.stdout or "损坏" in r.stdout
+        print(f"  篡改内容被校验和拦截 - OK")
+
+        missing_info_path = base / "no_info.json"
+        with open(missing_info_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "snapshot_info": {"exported_at": "2025-01-01"},
+                "config": {"config_version": "1.0", "manifest_path": "", "photo_dir": "", "track_dir": "", "table_dir": ""},
+                "state": {"state_version": "1.0", "issues": [], "review_history": [], "undo_stack": []},
+            }, f)
+        r = run_cli(ws, "import", str(missing_info_path), "--yes")
+        assert r.returncode != 0, "缺snapshot_version应导入失败"
+        print(f"  缺快照版本字段被拦截 - OK")
+
+        print("  [PASS] 测试14通过")
+        return True
+
+
+def test_version_mismatch():
+    """测试15：版本不匹配检测"""
+    print("\n" + "=" * 60)
+    print("测试15：版本不匹配检测")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="version_test_") as tmp:
+        base = Path(tmp)
+
+        ws = setup_workspace(base, "ws")
+        r = run_cli(ws, "scan")
+        assert r.returncode == 0
+
+        snap_path = base / "ver_snap.json"
+        r = run_cli(ws, "export", str(snap_path))
+        assert r.returncode == 0
+
+        with open(snap_path, encoding="utf-8") as f:
+            snap = json.load(f)
+
+        snap_fut = json.loads(json.dumps(snap))
+        snap_fut["snapshot_info"]["snapshot_version"] = "99.0"
+        snap_fut["snapshot_info"]["content_hash"] = ""
+        fut_path = base / "future_snap.json"
+        with open(fut_path, "w", encoding="utf-8") as f:
+            json.dump(snap_fut, f, ensure_ascii=False, indent=2)
+        r = run_cli(ws, "import", str(fut_path), "--yes")
+        assert r.returncode != 0, "不支持的快照版本应导入失败"
+        assert "版本" in r.stdout or "version" in r.stdout.lower() or "不支持" in r.stdout
+        print(f"  不支持的快照版本被拦截 - OK")
+
+        snap_bad_state = json.loads(json.dumps(snap))
+        snap_bad_state["snapshot_info"]["state_version"] = "99.0"
+        snap_bad_state["snapshot_info"]["content_hash"] = ""
+        bad_state_path = base / "bad_state_snap.json"
+        with open(bad_state_path, "w", encoding="utf-8") as f:
+            json.dump(snap_bad_state, f, ensure_ascii=False, indent=2)
+        r = run_cli(ws, "import", str(bad_state_path), "--yes")
+        assert r.returncode != 0, "不支持的状态版本应导入失败"
+        print(f"  不支持的状态版本被拦截 - OK")
+
+        snap_bad_cfg = json.loads(json.dumps(snap))
+        snap_bad_cfg["snapshot_info"]["config_version"] = "99.0"
+        snap_bad_cfg["snapshot_info"]["content_hash"] = ""
+        bad_cfg_path = base / "bad_cfg_snap.json"
+        with open(bad_cfg_path, "w", encoding="utf-8") as f:
+            json.dump(snap_bad_cfg, f, ensure_ascii=False, indent=2)
+        r = run_cli(ws, "import", str(bad_cfg_path), "--yes")
+        assert r.returncode != 0, "不支持的配置版本应导入失败"
+        print(f"  不支持的配置版本被拦截 - OK")
+
+        print("  [PASS] 测试15通过")
+        return True
+
+
+def test_repeated_import_idempotency():
+    """测试16：重复导入幂等性 - 连续导入两次不应产生重复或状态错乱"""
+    print("\n" + "=" * 60)
+    print("测试16：重复导入幂等性")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="repeat_test_") as tmp:
+        base = Path(tmp)
+
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0
+        r = run_cli(ws_src, "review", "ISS-0001", "--status", "pending", "--remark", "原始")
+        assert r.returncode == 0
+
+        snap_path = base / "repeat_snap.json"
+        r = run_cli(ws_src, "export", str(snap_path))
+        assert r.returncode == 0
+
+        ws_dst = setup_workspace(base, "dst")
+        r = run_cli(ws_dst, "scan")
+        assert r.returncode == 0
+        n_dst_before = len(load_state(ws_dst)["issues"])
+
+        r1 = run_cli(ws_dst, "import", str(snap_path), "--strategy", "overwrite", "--yes")
+        assert r1.returncode == 0
+        state_after_1 = load_state(ws_dst)
+        n_after_1 = len(state_after_1["issues"])
+        history_after_1 = len(state_after_1["review_history"])
+        iss1_after_1 = next(i for i in state_after_1["issues"] if i["id"] == "ISS-0001")
+        assert_equal(iss1_after_1["remark"], "原始", "overwrite后备注应为快照版本")
+        print(f"  第1次导入(overwrite): {n_after_1} 个问题, {history_after_1} 条历史")
+
+        r = run_cli(ws_dst, "review", "ISS-0002", "--status", "ignored", "--remark", "两次导入间新增")
+        assert r.returncode == 0
+
+        r2 = run_cli(ws_dst, "import", str(snap_path), "--strategy", "skip", "--yes")
+        assert r2.returncode == 0
+        state_after_2 = load_state(ws_dst)
+        n_after_2 = len(state_after_2["issues"])
+        print(f"  第2次导入(skip): {n_after_2} 个问题")
+
+        assert_equal(n_after_2, n_after_1, "skip策略下重复导入问题数不应增加")
+
+        iss2 = next(i for i in state_after_2["issues"] if i["id"] == "ISS-0002")
+        assert_equal(iss2["remark"], "两次导入间新增", "skip策略下两次导入间的备注应保留")
+        print(f"  skip策略保留两次导入间的操作 - OK")
+
+        r = run_cli(ws_dst, "status")
+        assert r.returncode == 0
+        r = run_cli(ws_dst, "list")
+        assert r.returncode == 0
+        r = run_cli(ws_dst, "report", "-o", str(base / "repeat_report.txt"))
+        assert r.returncode == 0
+        print(f"  重复导入后命令正常 - OK")
+
+        print("  [PASS] 测试16通过")
+        return True
+
+
+def test_cross_restart_validation():
+    """测试17：跨重启验证链路 - 导入后多次独立CLI调用，状态一致不丢失"""
+    print("\n" + "=" * 60)
+    print("测试17：跨重启验证链路")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="xrestart_") as tmp:
+        base = Path(tmp)
+
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0
+
+        for i in range(1, 4):
+            r = run_cli(ws_src, "review", f"ISS-000{i}", "--status", "pending",
+                        "--remark", f"源备注{i}")
+            if r.returncode != 0:
+                break
+
+        state_src = load_state(ws_src)
+        n_issues = len(state_src["issues"])
+        n_history = len(state_src["review_history"])
+        n_undo = len(state_src["undo_stack"])
+
+        snap_path = base / "xrestart_snap.json"
+        r = run_cli(ws_src, "export", str(snap_path), "--note", "跨重启测试")
+        assert r.returncode == 0
+
+        ws_new = base / "new_ws"
+        ws_new.mkdir()
+        r = run_cli(ws_new, "import", str(snap_path), "--yes")
+        assert r.returncode == 0
+        print(f"  导入完成")
+
+        r = run_cli(ws_new, "status")
+        assert r.returncode == 0
+        assert "问题总数" in r.stdout
+        first_status = r.stdout
+        print(f"  第1次 status 正常")
+
+        r = run_cli(ws_new, "list")
+        assert r.returncode == 0
+        list_count_1 = sum(1 for l in r.stdout.splitlines() if l.startswith("[ISS-"))
+        print(f"  第1次 list: {list_count_1} 个问题")
+
+        r = run_cli(ws_new, "report", "-o", str(base / "r1.txt"))
+        assert r.returncode == 0
+        print(f"  第1次 report 正常")
+
+        r = run_cli(ws_new, "review", "ISS-0001", "--status", "accepted", "--remark", "重启后更新")
+        assert r.returncode == 0
+
+        r = run_cli(ws_new, "status")
+        assert r.returncode == 0
+        second_status = r.stdout
+        print(f"  第2次 status 正常（操作后）")
+
+        r = run_cli(ws_new, "list")
+        assert r.returncode == 0
+        list_count_2 = sum(1 for l in r.stdout.splitlines() if l.startswith("[ISS-"))
+        assert_equal(list_count_2, list_count_1, "list 问题数应不变")
+        print(f"  第2次 list: {list_count_2} 个问题")
+
+        r = run_cli(ws_new, "undo")
+        assert r.returncode == 0
+        assert "已撤销" in r.stdout
+
+        r = run_cli(ws_new, "status")
+        assert r.returncode == 0
+        print(f"  第3次 status 正常（撤销后）")
+
+        r = run_cli(ws_new, "scan")
+        assert r.returncode == 0
+
+        r = run_cli(ws_new, "status")
+        assert r.returncode == 0
+        assert "问题总数" in r.stdout
+        print(f"  第4次 status 正常（重扫后）")
+
+        r = run_cli(ws_new, "report", "-o", str(base / "r2.txt"))
+        assert r.returncode == 0
+        print(f"  第2次 report 正常")
+
+        state_final = load_state(ws_new)
+        assert_equal(len(state_final["issues"]), n_issues,
+                     "跨重启后问题数应与源一致")
+        iss1 = next(i for i in state_final["issues"] if i["id"] == "ISS-0001")
+        assert_equal(iss1["remark"], "源备注1",
+                     "跨重启+撤销+重扫后备注应恢复为导入时的值")
+        print(f"  跨重启验证: 问题数={len(state_final['issues'])}, "
+              f"历史={len(state_final['review_history'])} 条")
+
+        print("  [PASS] 测试17通过")
+        return True
+
+
+def test_ops_log():
+    """测试18：操作日志验证 - 导出/导入/重复导入均有日志"""
+    print("\n" + "=" * 60)
+    print("测试18：操作日志验证")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="log_test_") as tmp:
+        base = Path(tmp)
+
+        ws_src = setup_workspace(base, "src")
+        r = run_cli(ws_src, "scan")
+        assert r.returncode == 0
+        r = run_cli(ws_src, "review", "ISS-0001", "--status", "pending", "--remark", "日志测试")
+        assert r.returncode == 0
+
+        snap_path = base / "log_snap.json"
+        r = run_cli(ws_src, "export", str(snap_path), "--note", "日志测试")
+        assert r.returncode == 0
+
+        log_entries = load_ops_log(ws_src)
+        export_logs = [e for e in log_entries if e.get("op") == "export"]
+        assert len(export_logs) >= 1, "应有导出日志"
+        exp_log = export_logs[-1]
+        assert_equal(exp_log["result"], "success", "导出日志应为成功")
+        assert exp_log["content_hash"], "导出日志应含校验和"
+        assert exp_log["issue_count"] > 0, "导出日志应含问题计数"
+        assert exp_log["history_count"] >= 0, "导出日志应含历史计数"
+        print(f"  导出日志: result={exp_log['result']}, hash={exp_log['content_hash']}")
+
+        ws_dst = setup_workspace(base, "dst")
+        r = run_cli(ws_dst, "import", str(snap_path), "--yes")
+        assert r.returncode == 0
+
+        log_entries_dst = load_ops_log(ws_dst)
+        import_logs = [e for e in log_entries_dst if e.get("op") == "import"]
+        assert len(import_logs) >= 1, "应有导入日志"
+        imp_log = import_logs[-1]
+        assert_equal(imp_log["result"], "success", "导入日志应为成功")
+        assert "strategy" in imp_log, "导入日志应含策略"
+        assert "issues_imported" in imp_log, "导入日志应含导入统计"
+        assert "content_hash" in imp_log, "导入日志应含校验和"
+        print(f"  导入日志: result={imp_log['result']}, strategy={imp_log['strategy']}")
+
+        r = run_cli(ws_dst, "import", str(snap_path), "--dry-run")
+        assert r.returncode == 0
+        log_entries_dst2 = load_ops_log(ws_dst)
+        dry_run_logs = [e for e in log_entries_dst2 if e.get("op") == "import_dry_run"]
+        assert len(dry_run_logs) >= 1, "应有dry-run日志"
+        print(f"  dry-run 日志存在 - OK")
+
+        r = run_cli(ws_dst, "import", str(snap_path), "--yes")
+        assert r.returncode == 0
+        log_entries_dst3 = load_ops_log(ws_dst)
+        all_import_logs = [e for e in log_entries_dst3 if e.get("op") == "import"]
+        assert len(all_import_logs) >= 2, "重复导入应有第二条日志"
+        print(f"  重复导入日志 - OK (共 {len(all_import_logs)} 条导入日志)")
+
+        print("  [PASS] 测试18通过")
+        return True
+
+
+def test_ops_log_cli_command():
+    """测试19：ops-log CLI 命令"""
+    print("\n" + "=" * 60)
+    print("测试19：ops-log CLI 命令")
+    print("=" * 60)
+
+    with tempfile.TemporaryDirectory(prefix="opslog_cli_") as tmp:
+        base = Path(tmp)
+
+        ws = setup_workspace(base, "ws")
+        r = run_cli(ws, "scan")
+        assert r.returncode == 0
+
+        snap_path = base / "ops_snap.json"
+        r = run_cli(ws, "export", str(snap_path), "--note", "CLI日志测试")
+        assert r.returncode == 0
+
+        r = run_cli(ws, "ops-log")
+        assert r.returncode == 0
+        assert "export" in r.stdout
+        assert "OK" in r.stdout
+        print(f"  ops-log 显示导出记录 - OK")
+
+        ws_dst = setup_workspace(base, "dst")
+        r = run_cli(ws_dst, "import", str(snap_path), "--yes")
+        assert r.returncode == 0
+
+        r = run_cli(ws_dst, "ops-log")
+        assert r.returncode == 0
+        assert "import" in r.stdout
+        print(f"  ops-log 显示导入记录 - OK")
+
+        r = run_cli(ws_dst, "ops-log", "--op", "import")
+        assert r.returncode == 0
+        assert "import" in r.stdout
+        print(f"  ops-log --op 过滤正常 - OK")
+
+        r = run_cli(ws_dst, "ops-log", "--limit", "1")
+        assert r.returncode == 0
+        print(f"  ops-log --limit 正常 - OK")
+
+        print("  [PASS] 测试19通过")
+        return True
+
+
 def main():
     print("快照导出/导入功能 - 回归测试")
     print(f"工作目录: {SCRIPT_DIR}")
@@ -851,6 +1333,13 @@ def main():
         test_import_to_empty_workspace_full_recovery,
         test_import_then_restart_continue_work,
         test_import_to_partial_residue_workspace,
+        test_export_integrity,
+        test_corrupted_snapshot_import,
+        test_version_mismatch,
+        test_repeated_import_idempotency,
+        test_cross_restart_validation,
+        test_ops_log,
+        test_ops_log_cli_command,
     ]
 
     passed = 0

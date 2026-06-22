@@ -22,6 +22,7 @@ from .models import IssueStatus, ScanResult, FileEntry, IssueType
 from .snapshot import (
     export_snapshot, import_snapshot, load_snapshot, preflight_import,
     list_backups, restore_from_backup, get_backup_path,
+    validate_snapshot_file, read_ops_log,
     ImportReport, ImportConflict,
 )
 
@@ -396,6 +397,13 @@ def export_snapshot_cmd(ctx, output_path, note):
     click.echo(f"  来源工作区: {info.source_workspace}")
     if info.note:
         click.echo(f"  备注: {info.note}")
+    click.echo(f"  配置版本: {info.config_version}")
+    click.echo(f"  状态版本: {info.state_version}")
+    click.echo(f"  问题数量: {info.issue_count}")
+    click.echo(f"  复核历史: {info.history_count} 条")
+    click.echo(f"  撤销栈: {info.undo_stack_count} 步")
+    click.echo(f"  调查点: {info.survey_points_count} 个")
+    click.echo(f"  内容校验和: {info.content_hash}")
 
 
 @cli.command("import")
@@ -446,15 +454,17 @@ def snapshot_info_cmd(ctx, snapshot_path):
     click.echo(f"来源工作区: {info.source_workspace}")
     if info.note:
         click.echo(f"备注: {info.note}")
+    click.echo(f"配置版本: {info.config_version}")
+    click.echo(f"状态版本: {info.state_version}")
+    click.echo(f"问题总数: {info.issue_count or len(state.issues)}")
+    click.echo(f"复核历史: {info.history_count or len(state.review_history)} 条")
+    click.echo(f"撤销栈: {info.undo_stack_count or len(state.undo_stack)} 步")
+    click.echo(f"调查点: {info.survey_points_count or len(state.survey_points)} 个")
+    if info.content_hash:
+        click.echo(f"内容校验和: {info.content_hash}")
     click.echo("")
-    click.echo(f"配置版本: {config.config_version}")
-    click.echo(f"状态版本: {state.state_version}")
     click.echo(f"创建时间: {state.created_at}")
     click.echo(f"最后扫描: {state.last_scan_time or '未扫描'}")
-    click.echo(f"调查点数量: {len(state.survey_points)}")
-    click.echo(f"问题总数: {len(state.issues)}")
-    click.echo(f"复核历史: {len(state.review_history)} 条")
-    click.echo(f"可撤销步数: {len(state.undo_stack)}")
 
 
 @cli.command("backup-list")
@@ -502,12 +512,13 @@ def backup_restore_cmd(ctx, backup_name, yes):
 
 
 def _print_import_report(report: ImportReport) -> None:
-    """打印导入报告"""
     mode = "预检" if report.dry_run else "导入"
     status = "成功" if report.success or report.dry_run else "失败"
 
     click.echo("=" * 60)
     click.echo(f"快照{mode}报告: {status}")
+    if report.phase:
+        click.echo(f"阶段: {report.phase}")
     click.echo("=" * 60)
 
     if report.snapshot_info:
@@ -517,6 +528,8 @@ def _print_import_report(report: ImportReport) -> None:
         click.echo(f"来源: {info.source_workspace}")
         if info.note:
             click.echo(f"备注: {info.note}")
+        if info.content_hash:
+            click.echo(f"校验和: {info.content_hash}")
         click.echo("")
 
     if report.conflicts:
@@ -524,6 +537,8 @@ def _print_import_report(report: ImportReport) -> None:
         for c in report.conflicts:
             icon = "X" if c.severity == "error" else ("!" if c.severity == "warning" else "i")
             click.echo(f"  [{icon}] [{c.conflict_type}] {c.message}")
+            if c.hint:
+                click.echo(f"       建议: {c.hint}")
             if c.conflict_type == "config_mismatch" and "diffs" in c.details:
                 for field, snap_val, target_val in c.details["diffs"][:5]:
                     click.echo(f"      - {field}:")
@@ -553,6 +568,30 @@ def _print_import_report(report: ImportReport) -> None:
         click.echo(f"备份已保存至: {report.backup_path}")
         click.echo(f"如需回退，可运行: survey-check backup-restore <备份名>")
 
+    if report.has_errors and not report.dry_run:
+        click.echo("")
+        error_conflicts = [c for c in report.conflicts if c.severity == "error"]
+        if any(c.conflict_type in ("snapshot_missing", "snapshot_invalid_json",
+                                    "snapshot_read_error", "snapshot_missing_keys",
+                                    "snapshot_info_missing", "snapshot_state_missing",
+                                    "snapshot_config_missing", "snapshot_parse_error",
+                                    "snapshot_checksum_mismatch")
+               for c in error_conflicts):
+            click.echo("[诊断] 问题原因: 快照包有问题（文件损坏、格式异常或校验失败）")
+            click.echo("  建议操作: 请重新导出快照，确认传输过程中文件未被修改")
+        elif any(c.conflict_type in ("target_dir_not_creatable", "target_dir_not_writable")
+                 for c in error_conflicts):
+            click.echo("[诊断] 问题原因: 目标目录有问题（无法写入或创建）")
+            click.echo("  建议操作: 请检查目录权限和路径是否正确")
+        elif any(c.conflict_type in ("snapshot_version_unsupported", "state_version_unsupported",
+                                      "config_version_unsupported")
+                 for c in error_conflicts):
+            click.echo("[诊断] 问题原因: 版本不匹配（快照由不同版本工具导出）")
+            click.echo("  建议操作: 请升级 survey-check 或使用匹配版本的工具重新导出")
+        elif any(c.conflict_type == "import_failed" for c in error_conflicts):
+            click.echo("[诊断] 问题原因: 导入执行过程中出错，已从备份恢复")
+            click.echo("  建议操作: 请检查错误信息，确认工作区状态后重试")
+
     if not report.dry_run and report.success and not report.has_errors:
         click.echo("")
         click.echo("[完成] 快照导入成功，可继续使用以下命令复核:")
@@ -580,6 +619,58 @@ def _type_label(issue_type):
         IssueType.BAD_PATH: "路径错误",
     }
     return labels.get(issue_type, str(issue_type))
+
+
+@cli.command("ops-log")
+@click.option("--op", "-o", "op_filter", default=None,
+              type=click.Choice(["export", "import", "import_dry_run", "backup_restore"]),
+              help="按操作类型筛选")
+@click.option("--limit", "-n", default=20, help="显示最近 N 条记录")
+@click.pass_context
+def ops_log_cmd(ctx, op_filter, limit):
+    """查看导出/导入操作日志"""
+    workspace = _get_workspace(ctx)
+    entries = read_ops_log(workspace, op_filter=op_filter, limit=limit)
+
+    if not entries:
+        click.echo("暂无操作日志")
+        return
+
+    click.echo(f"操作日志（最近 {len(entries)} 条）:")
+    click.echo("-" * 60)
+    for entry in entries:
+        op = entry.get("op", "?")
+        ts = entry.get("timestamp", "?")
+        result = entry.get("result", "?")
+        result_icon = "OK" if result == "success" else "FAIL"
+        click.echo(f"[{result_icon}] {op} @ {ts}")
+
+        if op == "export":
+            click.echo(f"     输出: {entry.get('output_path', '?')}")
+            click.echo(f"     问题数: {entry.get('issue_count', 0)}, 历史: {entry.get('history_count', 0)}")
+            click.echo(f"     校验和: {entry.get('content_hash', '?')}")
+        elif op == "import":
+            click.echo(f"     快照: {entry.get('snapshot_path', '?')}")
+            click.echo(f"     策略: {entry.get('strategy', '?')}")
+            if result == "success":
+                click.echo(f"     新增: {entry.get('issues_imported', 0)}, "
+                           f"跳过: {entry.get('issues_skipped', 0)}, "
+                           f"覆盖: {entry.get('issues_overwritten', 0)}")
+                click.echo(f"     历史导入: {entry.get('history_imported', 0)} 条")
+                if entry.get('backup_path'):
+                    click.echo(f"     备份: {entry['backup_path']}")
+            else:
+                click.echo(f"     失败阶段: {entry.get('failure_phase', '?')}")
+                click.echo(f"     失败原因: {entry.get('failure_reason', '?')}")
+                if entry.get('rolled_back'):
+                    click.echo(f"     已回退: 是")
+        elif op == "import_dry_run":
+            click.echo(f"     快照: {entry.get('snapshot_path', '?')}")
+            click.echo(f"     冲突: {entry.get('conflicts_count', 0)}, "
+                       f"警告: {entry.get('warnings_count', 0)}")
+        elif op == "backup_restore":
+            click.echo(f"     备份: {entry.get('backup_path', '?')}")
+        click.echo("")
 
 
 def main():
