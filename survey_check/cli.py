@@ -19,6 +19,11 @@ from .scanner import scan_all
 from .detector import detect_issues
 from .reporter import generate_text_report, generate_csv_report
 from .models import IssueStatus, ScanResult, FileEntry, IssueType
+from .snapshot import (
+    export_snapshot, import_snapshot, load_snapshot, preflight_import,
+    list_backups, restore_from_backup, get_backup_path,
+    ImportReport, ImportConflict,
+)
 
 
 def _get_workspace(ctx) -> str:
@@ -373,6 +378,180 @@ def status(ctx):
     click.echo("")
     click.echo(f"复核操作数: {len(state.review_history)}")
     click.echo(f"可撤销步数: {len(state.undo_stack)}")
+
+
+@cli.command("export")
+@click.argument("output_path", required=False, default="survey_snapshot.json")
+@click.option("--note", "-n", default="", help="快照备注信息")
+@click.pass_context
+def export_snapshot_cmd(ctx, output_path, note):
+    """导出工作区复核快照"""
+    workspace = _get_workspace(ctx)
+
+    info = export_snapshot(workspace, output_path, note=note)
+
+    click.echo(f"[OK] 快照已导出: {os.path.abspath(output_path)}")
+    click.echo(f"  快照版本: {info.snapshot_version}")
+    click.echo(f"  导出时间: {info.exported_at}")
+    click.echo(f"  来源工作区: {info.source_workspace}")
+    if info.note:
+        click.echo(f"  备注: {info.note}")
+
+
+@cli.command("import")
+@click.argument("snapshot_path")
+@click.option("--strategy", "-s", default="skip",
+              type=click.Choice(["skip", "overwrite", "renumber", "merge"]),
+              help="冲突处理策略: skip(跳过)/overwrite(覆盖)/renumber(重编号)/merge(智能合并)")
+@click.option("--include-config", "-c", is_flag=True, help="同时导入配置")
+@click.option("--dry-run", "-d", is_flag=True, help="预检模式，只检测不实际导入")
+@click.option("--yes", "-y", is_flag=True, help="跳过确认直接执行")
+@click.pass_context
+def import_snapshot_cmd(ctx, snapshot_path, strategy, include_config, dry_run, yes):
+    """导入复核快照到工作区"""
+    workspace = _get_workspace(ctx)
+
+    if dry_run:
+        report = preflight_import(workspace, snapshot_path)
+    else:
+        report = import_snapshot(workspace, snapshot_path,
+                                strategy=strategy,
+                                include_config=include_config,
+                                dry_run=False)
+
+    _print_import_report(report)
+
+    if report.has_errors:
+        sys.exit(1)
+
+
+@cli.command("snapshot-info")
+@click.argument("snapshot_path")
+@click.pass_context
+def snapshot_info_cmd(ctx, snapshot_path):
+    """查看快照文件信息"""
+    if not os.path.exists(snapshot_path):
+        click.echo(f"错误: 快照文件不存在: {snapshot_path}", err=True)
+        sys.exit(1)
+
+    try:
+        info, config, state = load_snapshot(snapshot_path)
+    except Exception as e:
+        click.echo(f"错误: 无法解析快照: {e}", err=True)
+        sys.exit(1)
+
+    click.echo(f"快照文件: {snapshot_path}")
+    click.echo(f"快照版本: {info.snapshot_version}")
+    click.echo(f"导出时间: {info.exported_at}")
+    click.echo(f"来源工作区: {info.source_workspace}")
+    if info.note:
+        click.echo(f"备注: {info.note}")
+    click.echo("")
+    click.echo(f"配置版本: {config.config_version}")
+    click.echo(f"状态版本: {state.state_version}")
+    click.echo(f"创建时间: {state.created_at}")
+    click.echo(f"最后扫描: {state.last_scan_time or '未扫描'}")
+    click.echo(f"调查点数量: {len(state.survey_points)}")
+    click.echo(f"问题总数: {len(state.issues)}")
+    click.echo(f"复核历史: {len(state.review_history)} 条")
+    click.echo(f"可撤销步数: {len(state.undo_stack)}")
+
+
+@cli.command("backup-list")
+@click.pass_context
+def backup_list_cmd(ctx):
+    """列出导入备份"""
+    workspace = _get_workspace(ctx)
+    backups = list_backups(workspace)
+
+    if not backups:
+        click.echo("暂无导入备份")
+        return
+
+    click.echo(f"共 {len(backups)} 个导入备份（最新在前）:")
+    for i, name in enumerate(backups, 1):
+        path = get_backup_path(workspace, name)
+        click.echo(f"  {i}. {name}")
+        click.echo(f"     路径: {path}")
+
+
+@cli.command("backup-restore")
+@click.argument("backup_name")
+@click.option("--yes", "-y", is_flag=True, help="跳过确认直接恢复")
+@click.pass_context
+def backup_restore_cmd(ctx, backup_name, yes):
+    """从导入备份恢复"""
+    workspace = _get_workspace(ctx)
+    backup_path = get_backup_path(workspace, backup_name)
+
+    if not os.path.isdir(backup_path):
+        click.echo(f"错误: 备份不存在: {backup_name}", err=True)
+        sys.exit(1)
+
+    if not yes:
+        click.echo(f"将从备份 '{backup_name}' 恢复工作区状态")
+        click.echo("警告: 当前状态将被覆盖！")
+        click.confirm("确认继续?", abort=True)
+
+    success = restore_from_backup(workspace, backup_path)
+    if success:
+        click.echo(f"[OK] 已从备份 {backup_name} 恢复")
+    else:
+        click.echo(f"错误: 恢复失败", err=True)
+        sys.exit(1)
+
+
+def _print_import_report(report: ImportReport) -> None:
+    """打印导入报告"""
+    mode = "预检" if report.dry_run else "导入"
+    status = "成功" if report.success or report.dry_run else "失败"
+
+    click.echo("=" * 60)
+    click.echo(f"快照{mode}报告: {status}")
+    click.echo("=" * 60)
+
+    if report.snapshot_info:
+        info = report.snapshot_info
+        click.echo(f"快照版本: {info.snapshot_version}")
+        click.echo(f"导出时间: {info.exported_at}")
+        click.echo(f"来源: {info.source_workspace}")
+        if info.note:
+            click.echo(f"备注: {info.note}")
+        click.echo("")
+
+    if report.conflicts:
+        click.echo(f"冲突/警告: {len(report.conflicts)} 项")
+        for c in report.conflicts:
+            icon = "X" if c.severity == "error" else ("!" if c.severity == "warning" else "i")
+            click.echo(f"  [{icon}] [{c.conflict_type}] {c.message}")
+            if c.conflict_type == "config_mismatch" and "diffs" in c.details:
+                for field, snap_val, target_val in c.details["diffs"][:5]:
+                    click.echo(f"      - {field}:")
+                    click.echo(f"        快照: {snap_val}")
+                    click.echo(f"        目标: {target_val}")
+                if len(c.details["diffs"]) > 5:
+                    click.echo(f"      ... 等 {len(c.details['diffs'])} 处差异")
+            if c.conflict_type == "issue_id_conflict" and "conflicting_ids" in c.details:
+                ids = c.details["conflicting_ids"]
+                click.echo(f"      冲突编号: {', '.join(ids[:10])}")
+                if len(ids) > 10:
+                    click.echo(f"      ... 共 {len(ids)} 个")
+        click.echo("")
+
+    click.echo("统计:")
+    click.echo(f"  新增问题: {report.issues_imported}")
+    click.echo(f"  跳过问题: {report.issues_skipped}")
+    click.echo(f"  覆盖问题: {report.issues_overwritten}")
+    click.echo(f"  重编号问题: {report.issues_renumbered}")
+    click.echo(f"  导入历史记录: {report.history_imported}")
+
+    if report.config_updated:
+        click.echo(f"  配置已更新")
+
+    if report.backup_path:
+        click.echo("")
+        click.echo(f"备份已保存至: {report.backup_path}")
+        click.echo(f"如需回退，可运行: survey-check backup-restore <备份名>")
 
 
 def _status_label(status):
