@@ -1,9 +1,9 @@
 {
   "state_version": "1.0",
   "config_version": "1.0",
-  "created_at": "2026-06-22T09:40:33.154054",
-  "last_scan_time": "2026-06-22T09:41:09.111348",
-  "next_issue_number": 35,
+  "created_at": "2026-06-22T10:06:11.830066",
+  "last_scan_time": "2026-06-22T10:09:12.637321",
+  "next_issue_number": 20,
   "survey_points": [
     {
       "point_id": "P001",
@@ -179,44 +179,44 @@
         "point_id": null
       }
     ],
-    "scan_time": "2026-06-22T09:41:09.111348"
+    "scan_time": "2026-06-22T10:09:12.637321"
   },
   "issues": [
     {
       "id": "ISS-0001",
       "issue_type": "missing",
-      "status": "pending",
+      "status": "open",
       "description": "调查点 'P003' (三号调查点) 缺少照片文件",
       "file_type": "photo",
       "point_id": "P003",
       "file_paths": [],
-      "remark": "待补充",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "remark": "",
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0002",
       "issue_type": "missing",
-      "status": "pending",
+      "status": "open",
       "description": "调查点 'P004' (四号调查点) 缺少照片文件",
       "file_type": "photo",
       "point_id": "P004",
       "file_paths": [],
-      "remark": "待补充",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "remark": "",
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0003",
       "issue_type": "missing",
-      "status": "open",
+      "status": "pending",
       "description": "调查点 'P005' (五号调查点) 缺少照片文件",
       "file_type": "photo",
       "point_id": "P005",
       "file_paths": [],
-      "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "remark": "需补拍P005",
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:07:22.679731"
     },
     {
       "id": "ISS-0004",
@@ -227,8 +227,8 @@
       "point_id": "P006",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0005",
@@ -239,8 +239,8 @@
       "point_id": "P002",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0006",
@@ -251,8 +251,8 @@
       "point_id": "P004",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0007",
@@ -263,8 +263,8 @@
       "point_id": "P006",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0008",
@@ -275,8 +275,8 @@
       "point_id": "P001",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0009",
@@ -287,8 +287,8 @@
       "point_id": "P003",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0010",
@@ -299,8 +299,8 @@
       "point_id": "P005",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0011",
@@ -311,8 +311,8 @@
       "point_id": "P006",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0012",
@@ -326,8 +326,8 @@
         "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_2.jpg"
       ],
       "remark": "重复照片确认有效",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:07:22.272828"
     },
     {
       "id": "ISS-0013",
@@ -340,8 +340,8 @@
         "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P003a.jpg"
       ],
       "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0014",
@@ -354,8 +354,8 @@
         "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P007.jpg"
       ],
       "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0015",
@@ -368,8 +368,8 @@
         "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\unknown_file.jpg"
       ],
       "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0016",
@@ -382,101 +382,85 @@
         "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P007.gpx"
       ],
       "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:32.610231"
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:06:14.829078"
     },
     {
       "id": "ISS-0017",
       "issue_type": "name_conflict",
-      "status": "open",
+      "status": "ignored",
       "description": "表格文件 'random.csv' 对应的调查点 'random' 不在清单中",
       "file_type": "table",
       "point_id": "random",
       "file_paths": [
         "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\random.csv"
       ],
-      "remark": "",
-      "created_at": "2026-06-22T09:40:35.677975",
-      "updated_at": "2026-06-22T09:41:09.112369"
+      "remark": "无关文件",
+      "created_at": "2026-06-22T10:06:14.829078",
+      "updated_at": "2026-06-22T10:07:23.039726"
     }
   ],
   "review_history": [
     {
       "action_id": "ACT-0001",
-      "issue_id": "ISS-0001",
-      "old_status": "open",
-      "new_status": "pending",
-      "old_remark": "",
-      "new_remark": "待补充",
-      "timestamp": "2026-06-22T09:40:55.140717"
-    },
-    {
-      "action_id": "ACT-0002",
-      "issue_id": "ISS-0002",
-      "old_status": "open",
-      "new_status": "pending",
-      "old_remark": "",
-      "new_remark": "待补充",
-      "timestamp": "2026-06-22T09:40:55.140717"
-    },
-    {
-      "action_id": "ACT-0003",
       "issue_id": "ISS-0012",
       "old_status": "open",
       "new_status": "accepted",
       "old_remark": "",
       "new_remark": "重复照片确认有效",
-      "timestamp": "2026-06-22T09:40:55.520627"
+      "timestamp": "2026-06-22T10:07:22.272828"
     },
     {
-      "action_id": "ACT-0004",
-      "issue_id": "ISS-0016",
+      "action_id": "ACT-0002",
+      "issue_id": "ISS-0003",
+      "old_status": "open",
+      "new_status": "pending",
+      "old_remark": "",
+      "new_remark": "需补拍P005",
+      "timestamp": "2026-06-22T10:07:22.679731"
+    },
+    {
+      "action_id": "ACT-0003",
+      "issue_id": "ISS-0017",
       "old_status": "open",
       "new_status": "ignored",
       "old_remark": "",
       "new_remark": "无关文件",
-      "timestamp": "2026-06-22T09:40:55.943614"
-    },
-    {
-      "action_id": "ACT-0005",
-      "issue_id": "ISS-0016",
-      "old_status": "ignored",
-      "new_status": "open",
-      "old_remark": "无关文件",
-      "new_remark": "",
-      "timestamp": "2026-06-22T09:41:32.610574"
+      "timestamp": "2026-06-22T10:07:23.039726"
     }
   ],
   "undo_stack": [
     [
       {
         "action_id": "ACT-0001",
-        "issue_id": "ISS-0001",
-        "old_status": "open",
-        "new_status": "pending",
-        "old_remark": "",
-        "new_remark": "待补充",
-        "timestamp": "2026-06-22T09:40:55.140717"
-      },
-      {
-        "action_id": "ACT-0002",
-        "issue_id": "ISS-0002",
-        "old_status": "open",
-        "new_status": "pending",
-        "old_remark": "",
-        "new_remark": "待补充",
-        "timestamp": "2026-06-22T09:40:55.140717"
-      }
-    ],
-    [
-      {
-        "action_id": "ACT-0003",
         "issue_id": "ISS-0012",
         "old_status": "open",
         "new_status": "accepted",
         "old_remark": "",
         "new_remark": "重复照片确认有效",
-        "timestamp": "2026-06-22T09:40:55.520627"
+        "timestamp": "2026-06-22T10:07:22.272828"
+      }
+    ],
+    [
+      {
+        "action_id": "ACT-0002",
+        "issue_id": "ISS-0003",
+        "old_status": "open",
+        "new_status": "pending",
+        "old_remark": "",
+        "new_remark": "需补拍P005",
+        "timestamp": "2026-06-22T10:07:22.679731"
+      }
+    ],
+    [
+      {
+        "action_id": "ACT-0003",
+        "issue_id": "ISS-0017",
+        "old_status": "open",
+        "new_status": "ignored",
+        "old_remark": "",
+        "new_remark": "无关文件",
+        "timestamp": "2026-06-22T10:07:23.039726"
       }
     ]
   ]

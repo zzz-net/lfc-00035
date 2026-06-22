@@ -12,7 +12,7 @@ from .state import (
     WorkspaceState, load_state, save_state,
     get_issue_by_id, update_issue_status,
     push_undo_batch, undo_last_batch, can_undo,
-    compute_stats, add_issue,
+    compute_stats, add_issue, generate_issue_id,
 )
 from .manifest import parse_manifest
 from .scanner import scan_all
@@ -104,7 +104,10 @@ def scan(ctx):
     workspace = _get_workspace(ctx)
     config, state = _load_all(workspace)
 
-    existing_issues = {i.id: i for i in state.issues} if state.issues else {}
+    existing_issues_by_key = {}
+    for old_issue in state.issues:
+        key = (old_issue.issue_type, old_issue.point_id or "", old_issue.description)
+        existing_issues_by_key[key] = old_issue
 
     points, errors = parse_manifest(config, config.manifest_path)
     if errors:
@@ -138,26 +141,27 @@ def scan(ctx):
     )
     state.last_scan_time = datetime.now().isoformat()
 
-    new_issues = detect_issues(state, config, scan_result, scan_errors)
+    raw_issues = detect_issues(state, config, scan_result, scan_errors)
 
-    preserved_count = 0
-    for new_issue in new_issues:
-        key = (new_issue.issue_type, new_issue.point_id or "", new_issue.description)
-        matched = None
-        for old_id, old_issue in existing_issues.items():
-            old_key = (old_issue.issue_type, old_issue.point_id or "", old_issue.description)
-            if old_key == key:
-                matched = old_issue
-                break
+    now = datetime.now().isoformat()
+    final_issues = []
+    reused_count = 0
+    new_count = 0
 
-        if matched:
-            new_issue.id = matched.id
-            new_issue.status = matched.status
-            new_issue.remark = matched.remark
-            new_issue.created_at = matched.created_at
-            preserved_count += 1
+    for raw in raw_issues:
+        key = (raw.issue_type, raw.point_id or "", raw.description)
+        old = existing_issues_by_key.get(key)
+        if old is not None:
+            final_issues.append(old)
+            reused_count += 1
+        else:
+            raw.id = generate_issue_id(state)
+            raw.created_at = now
+            raw.updated_at = now
+            final_issues.append(raw)
+            new_count += 1
 
-    state.issues = new_issues
+    state.issues = final_issues
     save_state(workspace, state)
 
     stats = compute_stats(state)
@@ -169,8 +173,10 @@ def scan(ctx):
     click.echo(f"  已接受: {stats.accepted_issues}")
     click.echo(f"  已忽略: {stats.ignored_issues}")
 
-    if preserved_count:
-        click.echo(f"  保留历史状态: {preserved_count} 条")
+    if reused_count:
+        click.echo(f"  复用历史问题: {reused_count} 条")
+    if new_count:
+        click.echo(f"  新增问题: {new_count} 条")
 
 
 @cli.command("list")
