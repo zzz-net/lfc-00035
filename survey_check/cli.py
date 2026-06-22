@@ -22,7 +22,7 @@ from .models import IssueStatus, ScanResult, FileEntry, IssueType
 from .snapshot import (
     export_snapshot, import_snapshot, load_snapshot, preflight_import,
     list_backups, restore_from_backup, get_backup_path,
-    validate_snapshot_file, read_ops_log,
+    validate_snapshot_file, read_ops_log, _append_ops_log,
     ImportReport, ImportConflict,
     PREFLIGHT_PROCEED, PREFLIGHT_CONFIRM, PREFLIGHT_ABORT,
     CATEGORY_CONFIG_MISSING, CATEGORY_RESIDUAL_STATE,
@@ -437,6 +437,20 @@ def import_snapshot_cmd(ctx, snapshot_path, strategy, include_config, dry_run, y
     conclusion = preflight_report.preflight_conclusion
 
     if conclusion == PREFLIGHT_ABORT:
+        _append_ops_log(workspace, {
+            "op": "import",
+            "timestamp": datetime.now().isoformat(),
+            "import_id": preflight_report.import_id,
+            "snapshot_path": snapshot_path,
+            "phase": "aborted_preflight",
+            "preflight_conclusion": preflight_report.preflight_conclusion,
+            "result": "failure",
+            "failure_phase": "preflight",
+            "failure_reason": "aborted_by_preflight",
+            "strategy": strategy,
+            "include_config": include_config,
+            "conflict_count": len(preflight_report.conflicts),
+        })
         click.echo("")
         click.echo("=" * 60)
         click.echo("[中止] 预检结论为【必须中止】，导入未执行")
@@ -458,6 +472,18 @@ def import_snapshot_cmd(ctx, snapshot_path, strategy, include_config, dry_run, y
         click.echo(f"  导入配置: {'是' if include_config else '否（保留目标配置）'}")
         click.echo("")
         if not click.confirm("确认继续执行导入? 此操作将修改工作区状态，已自动生成备份"):
+            _append_ops_log(workspace, {
+                "op": "import",
+                "timestamp": datetime.now().isoformat(),
+                "import_id": preflight_report.import_id,
+                "snapshot_path": snapshot_path,
+                "phase": "cancelled_by_user",
+                "preflight_conclusion": preflight_report.preflight_conclusion,
+                "result": "cancelled",
+                "strategy": strategy,
+                "include_config": include_config,
+                "conflict_count": len(preflight_report.conflicts),
+            })
             click.echo("已取消导入，工作区未做任何修改")
             sys.exit(0)
 
@@ -698,22 +724,72 @@ def _print_import_report(report: ImportReport) -> None:
 
     if report.has_errors and not report.dry_run:
         click.echo("")
+        click.echo("=" * 60)
+        click.echo("[诊断分析] 按原因类别区分如下：")
+        click.echo("=" * 60)
         error_conflicts = [c for c in report.conflicts if c.severity == "error"]
-        if any(c.category == CATEGORY_SNAPSHOT_INVALID for c in error_conflicts):
-            click.echo("[诊断] 问题原因: 快照包有问题（文件损坏、格式异常或校验失败）")
-            click.echo("  建议操作: 请重新导出快照，确认传输过程中文件未被修改")
-        elif any(c.category == CATEGORY_TARGET_INVALID for c in error_conflicts):
-            click.echo("[诊断] 问题原因: 目标目录有问题（无法写入或创建）")
-            click.echo("  建议操作: 请检查目录权限和路径是否正确")
-        elif any(c.category == CATEGORY_VERSION_MISMATCH for c in error_conflicts):
-            click.echo("[诊断] 问题原因: 版本不匹配（快照由不同版本工具导出）")
-            click.echo("  建议操作: 请升级 survey-check 或使用匹配版本的工具重新导出")
-        elif any(c.category == CATEGORY_RESIDUAL_STATE for c in error_conflicts):
-            click.echo("[诊断] 问题原因: 目标工作区存在残留状态（有状态无配置）")
-            click.echo("  建议操作: 删除 .survey_check/ 目录后重新导入，或先 init 初始化")
-        elif any(c.conflict_type == "import_failed" for c in error_conflicts):
-            click.echo("[诊断] 问题原因: 导入执行过程中出错，已从备份恢复")
-            click.echo("  建议操作: 请检查错误信息，确认工作区状态后重试")
+        warning_conflicts = [c for c in report.conflicts if c.severity == "warning"]
+
+        snapshot_errors = [c for c in error_conflicts if c.category == CATEGORY_SNAPSHOT_INVALID]
+        version_errors = [c for c in error_conflicts if c.category == CATEGORY_VERSION_MISMATCH]
+        residual_errors = [c for c in error_conflicts if c.category == CATEGORY_RESIDUAL_STATE]
+        target_errors = [c for c in error_conflicts if c.category == CATEGORY_TARGET_INVALID]
+        config_warnings = [c for c in warning_conflicts
+                           if c.category == CATEGORY_CONTENT_CONFLICT and c.conflict_type == "config_mismatch"]
+        import_failed = [c for c in error_conflicts if c.conflict_type == "import_failed"]
+
+        if snapshot_errors or version_errors:
+            click.echo("")
+            click.echo("【类别一】导出包问题（快照本身损坏或不兼容）")
+            click.echo("-" * 40)
+            for c in snapshot_errors:
+                click.echo(f"  - [{c.conflict_type}] {c.message}")
+            for c in version_errors:
+                click.echo(f"  - [{c.conflict_type}] {c.message}")
+            click.echo("  建议: 请回到源工作区重新执行 'survey-check export'，")
+            click.echo("        或确认传输过程中文件未被篡改/截断。")
+
+        if residual_errors:
+            click.echo("")
+            click.echo("【类别二】目录残留问题（目标目录有不完整的旧状态）")
+            click.echo("-" * 40)
+            for c in residual_errors:
+                click.echo(f"  - [{c.conflict_type}] {c.message}")
+            click.echo("  建议: 删除目标目录下的 .survey_check/ 文件夹后重试，")
+            click.echo("        或先在目标目录执行 'survey-check init' 完成初始化。")
+
+        if target_errors:
+            click.echo("")
+            click.echo("【类别二b】目标目录访问问题（无法写入或路径无效）")
+            click.echo("-" * 40)
+            for c in target_errors:
+                click.echo(f"  - [{c.conflict_type}] {c.message}")
+            click.echo("  建议: 检查目标路径是否正确、当前用户是否有写入权限。")
+
+        if config_warnings:
+            click.echo("")
+            click.echo("【类别三】本地配置不一致（目标配置与快照配置有差异）")
+            click.echo("-" * 40)
+            for c in config_warnings:
+                click.echo(f"  - [{c.conflict_type}] {c.message}")
+                if "diffs" in c.details:
+                    for field, snap_val, target_val in c.details["diffs"][:5]:
+                        click.echo(f"      * {field}: 快照={snap_val!r} vs 目标={target_val!r}")
+            click.echo("  建议: 如需使用快照中的配置，请追加 --include-config 参数；")
+            click.echo("        否则保留当前目标配置（路径字段会自动重映射至目标工作区）。")
+
+        if import_failed:
+            click.echo("")
+            click.echo("【执行异常】导入执行阶段出错，已自动从备份回滚")
+            click.echo("-" * 40)
+            for c in import_failed:
+                click.echo(f"  - 错误: {c.message}")
+            click.echo("  建议: 检查工作区文件完整性后重试；如需回滚到导入前状态，")
+            click.echo("        可使用 'survey-check backup-restore <备份名>'。")
+
+        if not any([snapshot_errors, version_errors, residual_errors,
+                    target_errors, config_warnings, import_failed]):
+            click.echo("  未识别到具体类别，请查看上方冲突列表逐项处理。")
 
     if not report.dry_run and report.success and not report.has_errors:
         click.echo("")

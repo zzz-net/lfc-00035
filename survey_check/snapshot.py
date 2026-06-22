@@ -827,6 +827,68 @@ def _do_import(workspace: str, snapshot_path: str,
                 hint="建议先备份目标工作区（使用 export 命令），再决定是否导入",
             ))
 
+    if target_state.scan_result is not None and snap_state.scan_result is not None:
+        report.conflicts.append(ImportConflict(
+            conflict_type="scan_result_conflict",
+            severity="warning",
+            category=CATEGORY_CONTENT_CONFLICT,
+            message=f"目标工作区已有扫描结果（{len(target_state.scan_result.photos)}照片/{len(target_state.scan_result.tracks)}轨迹/{len(target_state.scan_result.tables)}表格），快照也有扫描结果",
+            details={
+                "target": {
+                    "photos": len(target_state.scan_result.photos),
+                    "tracks": len(target_state.scan_result.tracks),
+                    "tables": len(target_state.scan_result.tables),
+                    "scan_time": target_state.scan_result.scan_time,
+                },
+                "snapshot": {
+                    "photos": len(snap_state.scan_result.photos),
+                    "tracks": len(snap_state.scan_result.tracks),
+                    "tables": len(snap_state.scan_result.tables),
+                    "scan_time": snap_state.scan_result.scan_time,
+                },
+                "strategy": strategy,
+            },
+            hint=f"使用 '{strategy}' 策略: skip=保留目标扫描结果, overwrite=用快照覆盖, renumber/merge=保留目标扫描结果",
+        ))
+
+    if len(target_state.survey_points) > 0 and len(snap_state.survey_points) > 0:
+        target_pt_ids = {p.point_id for p in target_state.survey_points}
+        snap_pt_ids = {p.point_id for p in snap_state.survey_points}
+        common = target_pt_ids & snap_pt_ids
+        only_target = target_pt_ids - snap_pt_ids
+        only_snap = snap_pt_ids - target_pt_ids
+        report.conflicts.append(ImportConflict(
+            conflict_type="survey_points_conflict",
+            severity="warning",
+            category=CATEGORY_CONTENT_CONFLICT,
+            message=(f"目标工作区已有 {len(target_state.survey_points)} 个调查点，"
+                     f"快照含 {len(snap_state.survey_points)} 个调查点 "
+                     f"（共有 {len(common)} 个，目标独有 {len(only_target)} 个，快照独有 {len(only_snap)} 个）"),
+            details={
+                "target_count": len(target_state.survey_points),
+                "snapshot_count": len(snap_state.survey_points),
+                "common_count": len(common),
+                "only_target_count": len(only_target),
+                "only_snapshot_count": len(only_snap),
+                "strategy": strategy,
+            },
+            hint=f"使用 '{strategy}' 策略: skip/renumber/merge=保留目标调查点, overwrite=用快照覆盖",
+        ))
+
+    if len(target_state.review_history) > 0 and len(snap_state.review_history) > 0:
+        report.conflicts.append(ImportConflict(
+            conflict_type="review_history_conflict",
+            severity="warning",
+            category=CATEGORY_CONTENT_CONFLICT,
+            message=f"目标工作区已有 {len(target_state.review_history)} 条复核历史，快照含 {len(snap_state.review_history)} 条",
+            details={
+                "target_count": len(target_state.review_history),
+                "snapshot_count": len(snap_state.review_history),
+                "strategy": strategy,
+            },
+            hint=f"使用 '{strategy}' 策略处理（语义等价的历史记录会自动去重）",
+        ))
+
     conflicting_ids, target_by_id = _find_conflicting_issues(snap_state, target_state)
 
     if conflicting_ids:
@@ -1133,14 +1195,20 @@ def _apply_import(snap_state: WorkspaceState, target_state: WorkspaceState,
             target_state.undo_stack.append(new_batch)
             undo_imported += len(new_batch)
 
-    if snap_state.scan_result and not target_state.scan_result:
-        target_state.scan_result = snap_state.scan_result
-
-    if snap_state.survey_points and not target_state.survey_points:
-        target_state.survey_points = snap_state.survey_points
-
-    if snap_state.last_scan_time and not target_state.last_scan_time:
-        target_state.last_scan_time = snap_state.last_scan_time
+    if strategy == "overwrite":
+        if snap_state.scan_result:
+            target_state.scan_result = snap_state.scan_result
+        if snap_state.survey_points:
+            target_state.survey_points = snap_state.survey_points
+        if snap_state.last_scan_time:
+            target_state.last_scan_time = snap_state.last_scan_time
+    else:
+        if snap_state.scan_result and not target_state.scan_result:
+            target_state.scan_result = snap_state.scan_result
+        if snap_state.survey_points and not target_state.survey_points:
+            target_state.survey_points = snap_state.survey_points
+        if snap_state.last_scan_time and not target_state.last_scan_time:
+            target_state.last_scan_time = snap_state.last_scan_time
 
     report.issues_imported = len(imported_issues)
     report.issues_skipped = len(skipped_ids)
