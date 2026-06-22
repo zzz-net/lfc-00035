@@ -1,9 +1,9 @@
 {
   "state_version": "1.0",
   "config_version": "1.0",
-  "created_at": "2026-06-22T10:06:11.830066",
-  "last_scan_time": "2026-06-22T10:09:12.637321",
-  "next_issue_number": 20,
+  "created_at": "2026-06-22T10:47:18.744472",
+  "last_scan_time": "2026-06-22T10:48:01.808494",
+  "next_issue_number": 19,
   "survey_points": [
     {
       "point_id": "P001",
@@ -64,7 +64,7 @@
     "photos": [
       {
         "file_type": "photo",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P001.jpg",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P001.jpg",
         "filename": "P001.jpg",
         "size": 0,
         "modified": "2026-06-22T09:24:32.010637",
@@ -72,7 +72,7 @@
       },
       {
         "file_type": "photo",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P002.jpg",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P002.jpg",
         "filename": "P002.jpg",
         "size": 0,
         "modified": "2026-06-22T09:24:32.013288",
@@ -80,7 +80,7 @@
       },
       {
         "file_type": "photo",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P003a.jpg",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P003a.jpg",
         "filename": "P003a.jpg",
         "size": 0,
         "modified": "2026-06-22T09:24:32.013288",
@@ -88,7 +88,7 @@
       },
       {
         "file_type": "photo",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_1.jpg",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_1.jpg",
         "filename": "P004_1.jpg",
         "size": 0,
         "modified": "2026-06-22T09:24:32.014325",
@@ -96,7 +96,7 @@
       },
       {
         "file_type": "photo",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_2.jpg",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_2.jpg",
         "filename": "P004_2.jpg",
         "size": 0,
         "modified": "2026-06-22T09:24:32.014325",
@@ -104,7 +104,7 @@
       },
       {
         "file_type": "photo",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P007.jpg",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P007.jpg",
         "filename": "P007.jpg",
         "size": 0,
         "modified": "2026-06-22T09:24:32.015381",
@@ -112,7 +112,15 @@
       },
       {
         "file_type": "photo",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\unknown_file.jpg",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P888_newconflict.jpg",
+        "filename": "P888_newconflict.jpg",
+        "size": 0,
+        "modified": "2026-06-22T10:47:59.500227",
+        "point_id": null
+      },
+      {
+        "file_type": "photo",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\unknown_file.jpg",
         "filename": "unknown_file.jpg",
         "size": 0,
         "modified": "2026-06-22T09:24:32.016852",
@@ -122,7 +130,7 @@
     "tracks": [
       {
         "file_type": "track",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P001.gpx",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P001.gpx",
         "filename": "P001.gpx",
         "size": 0,
         "modified": "2026-06-22T09:24:32.017900",
@@ -130,7 +138,7 @@
       },
       {
         "file_type": "track",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P003.gpx",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P003.gpx",
         "filename": "P003.gpx",
         "size": 0,
         "modified": "2026-06-22T09:24:32.017900",
@@ -138,7 +146,7 @@
       },
       {
         "file_type": "track",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P005.gpx",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P005.gpx",
         "filename": "P005.gpx",
         "size": 0,
         "modified": "2026-06-22T09:24:32.018928",
@@ -146,7 +154,7 @@
       },
       {
         "file_type": "track",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P007.gpx",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P007.gpx",
         "filename": "P007.gpx",
         "size": 0,
         "modified": "2026-06-22T09:24:32.018928",
@@ -156,7 +164,7 @@
     "tables": [
       {
         "file_type": "table",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\P002.xlsx",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\P002.xlsx",
         "filename": "P002.xlsx",
         "size": 0,
         "modified": "2026-06-22T09:24:32.020022",
@@ -164,7 +172,7 @@
       },
       {
         "file_type": "table",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\P004.xlsx",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\P004.xlsx",
         "filename": "P004.xlsx",
         "size": 0,
         "modified": "2026-06-22T09:24:32.020704",
@@ -172,27 +180,27 @@
       },
       {
         "file_type": "table",
-        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\random.csv",
+        "path": "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\random.csv",
         "filename": "random.csv",
         "size": 0,
         "modified": "2026-06-22T09:24:32.021552",
         "point_id": null
       }
     ],
-    "scan_time": "2026-06-22T10:09:12.637321"
+    "scan_time": "2026-06-22T10:48:01.808494"
   },
   "issues": [
     {
       "id": "ISS-0001",
       "issue_type": "missing",
-      "status": "open",
+      "status": "pending",
       "description": "调查点 'P003' (三号调查点) 缺少照片文件",
       "file_type": "photo",
       "point_id": "P003",
       "file_paths": [],
-      "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "remark": "待补轨迹文件",
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:35.512856"
     },
     {
       "id": "ISS-0002",
@@ -203,20 +211,20 @@
       "point_id": "P004",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0003",
       "issue_type": "missing",
-      "status": "pending",
+      "status": "open",
       "description": "调查点 'P005' (五号调查点) 缺少照片文件",
       "file_type": "photo",
       "point_id": "P005",
       "file_paths": [],
-      "remark": "需补拍P005",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:07:22.679731"
+      "remark": "",
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0004",
@@ -227,20 +235,20 @@
       "point_id": "P006",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0005",
       "issue_type": "missing",
-      "status": "open",
+      "status": "accepted",
       "description": "调查点 'P002' (二号调查点) 缺少轨迹文件",
       "file_type": "track",
       "point_id": "P002",
       "file_paths": [],
-      "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "remark": "重复文件确认可用",
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:35.847103"
     },
     {
       "id": "ISS-0006",
@@ -251,8 +259,8 @@
       "point_id": "P004",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0007",
@@ -263,8 +271,8 @@
       "point_id": "P006",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0008",
@@ -275,8 +283,8 @@
       "point_id": "P001",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0009",
@@ -287,8 +295,8 @@
       "point_id": "P003",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0010",
@@ -299,8 +307,8 @@
       "point_id": "P005",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0011",
@@ -311,23 +319,23 @@
       "point_id": "P006",
       "file_paths": [],
       "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0012",
       "issue_type": "duplicate",
-      "status": "accepted",
+      "status": "open",
       "description": "调查点 'P004' 有 2 个照片文件重复",
       "file_type": "photo",
       "point_id": "P004",
       "file_paths": [
-        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_1.jpg",
-        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_2.jpg"
+        "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_1.jpg",
+        "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_2.jpg"
       ],
-      "remark": "重复照片确认有效",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:07:22.272828"
+      "remark": "",
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0013",
@@ -337,11 +345,11 @@
       "file_type": "photo",
       "point_id": "P003a",
       "file_paths": [
-        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P003a.jpg"
+        "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P003a.jpg"
       ],
       "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0014",
@@ -351,11 +359,25 @@
       "file_type": "photo",
       "point_id": "P007",
       "file_paths": [
-        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P007.jpg"
+        "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P007.jpg"
       ],
       "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
+    },
+    {
+      "id": "ISS-0018",
+      "issue_type": "name_conflict",
+      "status": "open",
+      "description": "照片文件 'P888_newconflict.jpg' 对应的调查点 'P888_newconflict' 不在清单中",
+      "file_type": "photo",
+      "point_id": "P888_newconflict",
+      "file_paths": [
+        "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P888_newconflict.jpg"
+      ],
+      "remark": "",
+      "created_at": "2026-06-22T10:48:01.808494",
+      "updated_at": "2026-06-22T10:48:01.808494"
     },
     {
       "id": "ISS-0015",
@@ -365,11 +387,11 @@
       "file_type": "photo",
       "point_id": "unknown_file",
       "file_paths": [
-        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\unknown_file.jpg"
+        "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\unknown_file.jpg"
       ],
       "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0016",
@@ -379,11 +401,11 @@
       "file_type": "track",
       "point_id": "P007",
       "file_paths": [
-        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P007.gpx"
+        "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P007.gpx"
       ],
       "remark": "",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:06:14.829078"
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:21.862530"
     },
     {
       "id": "ISS-0017",
@@ -393,31 +415,31 @@
       "file_type": "table",
       "point_id": "random",
       "file_paths": [
-        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\random.csv"
+        "d:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\random.csv"
       ],
-      "remark": "无关文件",
-      "created_at": "2026-06-22T10:06:14.829078",
-      "updated_at": "2026-06-22T10:07:23.039726"
+      "remark": "无关文件忽略",
+      "created_at": "2026-06-22T10:47:21.862530",
+      "updated_at": "2026-06-22T10:47:36.171476"
     }
   ],
   "review_history": [
     {
       "action_id": "ACT-0001",
-      "issue_id": "ISS-0012",
-      "old_status": "open",
-      "new_status": "accepted",
-      "old_remark": "",
-      "new_remark": "重复照片确认有效",
-      "timestamp": "2026-06-22T10:07:22.272828"
-    },
-    {
-      "action_id": "ACT-0002",
-      "issue_id": "ISS-0003",
+      "issue_id": "ISS-0001",
       "old_status": "open",
       "new_status": "pending",
       "old_remark": "",
-      "new_remark": "需补拍P005",
-      "timestamp": "2026-06-22T10:07:22.679731"
+      "new_remark": "待补轨迹文件",
+      "timestamp": "2026-06-22T10:47:35.511811"
+    },
+    {
+      "action_id": "ACT-0002",
+      "issue_id": "ISS-0005",
+      "old_status": "open",
+      "new_status": "accepted",
+      "old_remark": "",
+      "new_remark": "重复文件确认可用",
+      "timestamp": "2026-06-22T10:47:35.847103"
     },
     {
       "action_id": "ACT-0003",
@@ -425,31 +447,31 @@
       "old_status": "open",
       "new_status": "ignored",
       "old_remark": "",
-      "new_remark": "无关文件",
-      "timestamp": "2026-06-22T10:07:23.039726"
+      "new_remark": "无关文件忽略",
+      "timestamp": "2026-06-22T10:47:36.171476"
     }
   ],
   "undo_stack": [
     [
       {
         "action_id": "ACT-0001",
-        "issue_id": "ISS-0012",
+        "issue_id": "ISS-0001",
         "old_status": "open",
-        "new_status": "accepted",
+        "new_status": "pending",
         "old_remark": "",
-        "new_remark": "重复照片确认有效",
-        "timestamp": "2026-06-22T10:07:22.272828"
+        "new_remark": "待补轨迹文件",
+        "timestamp": "2026-06-22T10:47:35.511811"
       }
     ],
     [
       {
         "action_id": "ACT-0002",
-        "issue_id": "ISS-0003",
+        "issue_id": "ISS-0005",
         "old_status": "open",
-        "new_status": "pending",
+        "new_status": "accepted",
         "old_remark": "",
-        "new_remark": "需补拍P005",
-        "timestamp": "2026-06-22T10:07:22.679731"
+        "new_remark": "重复文件确认可用",
+        "timestamp": "2026-06-22T10:47:35.847103"
       }
     ],
     [
@@ -459,8 +481,8 @@
         "old_status": "open",
         "new_status": "ignored",
         "old_remark": "",
-        "new_remark": "无关文件",
-        "timestamp": "2026-06-22T10:07:23.039726"
+        "new_remark": "无关文件忽略",
+        "timestamp": "2026-06-22T10:47:36.171476"
       }
     ]
   ]
