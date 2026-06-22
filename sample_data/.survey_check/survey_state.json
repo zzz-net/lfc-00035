@@ -1,0 +1,483 @@
+{
+  "state_version": "1.0",
+  "config_version": "1.0",
+  "created_at": "2026-06-22T09:40:33.154054",
+  "last_scan_time": "2026-06-22T09:41:09.111348",
+  "next_issue_number": 35,
+  "survey_points": [
+    {
+      "point_id": "P001",
+      "name": "一号调查点",
+      "original_row": 2,
+      "attributes": {
+        "description": "山顶观测点",
+        "type": "A类"
+      }
+    },
+    {
+      "point_id": "P002",
+      "name": "二号调查点",
+      "original_row": 3,
+      "attributes": {
+        "description": "山谷采样点",
+        "type": "B类"
+      }
+    },
+    {
+      "point_id": "P003",
+      "name": "三号调查点",
+      "original_row": 4,
+      "attributes": {
+        "description": "河边监测点",
+        "type": "A类"
+      }
+    },
+    {
+      "point_id": "P004",
+      "name": "四号调查点",
+      "original_row": 5,
+      "attributes": {
+        "description": "森林样地",
+        "type": "C类"
+      }
+    },
+    {
+      "point_id": "P005",
+      "name": "五号调查点",
+      "original_row": 6,
+      "attributes": {
+        "description": "农田边界",
+        "type": "B类"
+      }
+    },
+    {
+      "point_id": "P006",
+      "name": "六号调查点",
+      "original_row": 7,
+      "attributes": {
+        "description": "公路旁",
+        "type": "A类"
+      }
+    }
+  ],
+  "scan_result": {
+    "photos": [
+      {
+        "file_type": "photo",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P001.jpg",
+        "filename": "P001.jpg",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.010637",
+        "point_id": null
+      },
+      {
+        "file_type": "photo",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P002.jpg",
+        "filename": "P002.jpg",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.013288",
+        "point_id": null
+      },
+      {
+        "file_type": "photo",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P003a.jpg",
+        "filename": "P003a.jpg",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.013288",
+        "point_id": null
+      },
+      {
+        "file_type": "photo",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_1.jpg",
+        "filename": "P004_1.jpg",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.014325",
+        "point_id": null
+      },
+      {
+        "file_type": "photo",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_2.jpg",
+        "filename": "P004_2.jpg",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.014325",
+        "point_id": null
+      },
+      {
+        "file_type": "photo",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P007.jpg",
+        "filename": "P007.jpg",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.015381",
+        "point_id": null
+      },
+      {
+        "file_type": "photo",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\unknown_file.jpg",
+        "filename": "unknown_file.jpg",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.016852",
+        "point_id": null
+      }
+    ],
+    "tracks": [
+      {
+        "file_type": "track",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P001.gpx",
+        "filename": "P001.gpx",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.017900",
+        "point_id": null
+      },
+      {
+        "file_type": "track",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P003.gpx",
+        "filename": "P003.gpx",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.017900",
+        "point_id": null
+      },
+      {
+        "file_type": "track",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P005.gpx",
+        "filename": "P005.gpx",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.018928",
+        "point_id": null
+      },
+      {
+        "file_type": "track",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P007.gpx",
+        "filename": "P007.gpx",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.018928",
+        "point_id": null
+      }
+    ],
+    "tables": [
+      {
+        "file_type": "table",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\P002.xlsx",
+        "filename": "P002.xlsx",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.020022",
+        "point_id": null
+      },
+      {
+        "file_type": "table",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\P004.xlsx",
+        "filename": "P004.xlsx",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.020704",
+        "point_id": null
+      },
+      {
+        "file_type": "table",
+        "path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\random.csv",
+        "filename": "random.csv",
+        "size": 0,
+        "modified": "2026-06-22T09:24:32.021552",
+        "point_id": null
+      }
+    ],
+    "scan_time": "2026-06-22T09:41:09.111348"
+  },
+  "issues": [
+    {
+      "id": "ISS-0001",
+      "issue_type": "missing",
+      "status": "pending",
+      "description": "调查点 'P003' (三号调查点) 缺少照片文件",
+      "file_type": "photo",
+      "point_id": "P003",
+      "file_paths": [],
+      "remark": "待补充",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0002",
+      "issue_type": "missing",
+      "status": "pending",
+      "description": "调查点 'P004' (四号调查点) 缺少照片文件",
+      "file_type": "photo",
+      "point_id": "P004",
+      "file_paths": [],
+      "remark": "待补充",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0003",
+      "issue_type": "missing",
+      "status": "open",
+      "description": "调查点 'P005' (五号调查点) 缺少照片文件",
+      "file_type": "photo",
+      "point_id": "P005",
+      "file_paths": [],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0004",
+      "issue_type": "missing",
+      "status": "open",
+      "description": "调查点 'P006' (六号调查点) 缺少照片文件",
+      "file_type": "photo",
+      "point_id": "P006",
+      "file_paths": [],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0005",
+      "issue_type": "missing",
+      "status": "open",
+      "description": "调查点 'P002' (二号调查点) 缺少轨迹文件",
+      "file_type": "track",
+      "point_id": "P002",
+      "file_paths": [],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0006",
+      "issue_type": "missing",
+      "status": "open",
+      "description": "调查点 'P004' (四号调查点) 缺少轨迹文件",
+      "file_type": "track",
+      "point_id": "P004",
+      "file_paths": [],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0007",
+      "issue_type": "missing",
+      "status": "open",
+      "description": "调查点 'P006' (六号调查点) 缺少轨迹文件",
+      "file_type": "track",
+      "point_id": "P006",
+      "file_paths": [],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0008",
+      "issue_type": "missing",
+      "status": "open",
+      "description": "调查点 'P001' (一号调查点) 缺少表格文件",
+      "file_type": "table",
+      "point_id": "P001",
+      "file_paths": [],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0009",
+      "issue_type": "missing",
+      "status": "open",
+      "description": "调查点 'P003' (三号调查点) 缺少表格文件",
+      "file_type": "table",
+      "point_id": "P003",
+      "file_paths": [],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0010",
+      "issue_type": "missing",
+      "status": "open",
+      "description": "调查点 'P005' (五号调查点) 缺少表格文件",
+      "file_type": "table",
+      "point_id": "P005",
+      "file_paths": [],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0011",
+      "issue_type": "missing",
+      "status": "open",
+      "description": "调查点 'P006' (六号调查点) 缺少表格文件",
+      "file_type": "table",
+      "point_id": "P006",
+      "file_paths": [],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0012",
+      "issue_type": "duplicate",
+      "status": "accepted",
+      "description": "调查点 'P004' 有 2 个照片文件重复",
+      "file_type": "photo",
+      "point_id": "P004",
+      "file_paths": [
+        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_1.jpg",
+        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P004_2.jpg"
+      ],
+      "remark": "重复照片确认有效",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0013",
+      "issue_type": "name_conflict",
+      "status": "open",
+      "description": "照片文件 'P003a.jpg' 对应的调查点 'P003a' 不在清单中",
+      "file_type": "photo",
+      "point_id": "P003a",
+      "file_paths": [
+        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P003a.jpg"
+      ],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0014",
+      "issue_type": "name_conflict",
+      "status": "open",
+      "description": "照片文件 'P007.jpg' 对应的调查点 'P007' 不在清单中",
+      "file_type": "photo",
+      "point_id": "P007",
+      "file_paths": [
+        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\P007.jpg"
+      ],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0015",
+      "issue_type": "name_conflict",
+      "status": "open",
+      "description": "照片文件 'unknown_file.jpg' 对应的调查点 'unknown_file' 不在清单中",
+      "file_type": "photo",
+      "point_id": "unknown_file",
+      "file_paths": [
+        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos\\unknown_file.jpg"
+      ],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    },
+    {
+      "id": "ISS-0016",
+      "issue_type": "name_conflict",
+      "status": "open",
+      "description": "轨迹文件 'P007.gpx' 对应的调查点 'P007' 不在清单中",
+      "file_type": "track",
+      "point_id": "P007",
+      "file_paths": [
+        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks\\P007.gpx"
+      ],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:32.610231"
+    },
+    {
+      "id": "ISS-0017",
+      "issue_type": "name_conflict",
+      "status": "open",
+      "description": "表格文件 'random.csv' 对应的调查点 'random' 不在清单中",
+      "file_type": "table",
+      "point_id": "random",
+      "file_paths": [
+        "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables\\random.csv"
+      ],
+      "remark": "",
+      "created_at": "2026-06-22T09:40:35.677975",
+      "updated_at": "2026-06-22T09:41:09.112369"
+    }
+  ],
+  "review_history": [
+    {
+      "action_id": "ACT-0001",
+      "issue_id": "ISS-0001",
+      "old_status": "open",
+      "new_status": "pending",
+      "old_remark": "",
+      "new_remark": "待补充",
+      "timestamp": "2026-06-22T09:40:55.140717"
+    },
+    {
+      "action_id": "ACT-0002",
+      "issue_id": "ISS-0002",
+      "old_status": "open",
+      "new_status": "pending",
+      "old_remark": "",
+      "new_remark": "待补充",
+      "timestamp": "2026-06-22T09:40:55.140717"
+    },
+    {
+      "action_id": "ACT-0003",
+      "issue_id": "ISS-0012",
+      "old_status": "open",
+      "new_status": "accepted",
+      "old_remark": "",
+      "new_remark": "重复照片确认有效",
+      "timestamp": "2026-06-22T09:40:55.520627"
+    },
+    {
+      "action_id": "ACT-0004",
+      "issue_id": "ISS-0016",
+      "old_status": "open",
+      "new_status": "ignored",
+      "old_remark": "",
+      "new_remark": "无关文件",
+      "timestamp": "2026-06-22T09:40:55.943614"
+    },
+    {
+      "action_id": "ACT-0005",
+      "issue_id": "ISS-0016",
+      "old_status": "ignored",
+      "new_status": "open",
+      "old_remark": "无关文件",
+      "new_remark": "",
+      "timestamp": "2026-06-22T09:41:32.610574"
+    }
+  ],
+  "undo_stack": [
+    [
+      {
+        "action_id": "ACT-0001",
+        "issue_id": "ISS-0001",
+        "old_status": "open",
+        "new_status": "pending",
+        "old_remark": "",
+        "new_remark": "待补充",
+        "timestamp": "2026-06-22T09:40:55.140717"
+      },
+      {
+        "action_id": "ACT-0002",
+        "issue_id": "ISS-0002",
+        "old_status": "open",
+        "new_status": "pending",
+        "old_remark": "",
+        "new_remark": "待补充",
+        "timestamp": "2026-06-22T09:40:55.140717"
+      }
+    ],
+    [
+      {
+        "action_id": "ACT-0003",
+        "issue_id": "ISS-0012",
+        "old_status": "open",
+        "new_status": "accepted",
+        "old_remark": "",
+        "new_remark": "重复照片确认有效",
+        "timestamp": "2026-06-22T09:40:55.520627"
+      }
+    ]
+  ]
+}

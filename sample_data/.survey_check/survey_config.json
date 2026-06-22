@@ -1,0 +1,33 @@
+{
+  "config_version": "1.0",
+  "manifest_path": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\manifest.csv",
+  "photo_dir": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\photos",
+  "track_dir": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tracks",
+  "table_dir": "D:\\workSpace\\AI__SPACE\\lfc-00035\\sample_data\\tables",
+  "photo_exts": [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".bmp",
+    ".tif",
+    ".tiff"
+  ],
+  "track_exts": [
+    ".gpx",
+    ".kml",
+    ".kmz",
+    ".shp",
+    ".geojson"
+  ],
+  "table_exts": [
+    ".csv",
+    ".xlsx",
+    ".xls"
+  ],
+  "point_id_column": "point_id",
+  "name_column": "name",
+  "photo_pattern": "{point_id}",
+  "track_pattern": "{point_id}",
+  "table_pattern": "{point_id}"
+}
